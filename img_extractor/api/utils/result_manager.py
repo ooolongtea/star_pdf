@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 import openpyxl
 from openpyxl.drawing.image import Image as XlImage
+import gc
 
 class ResultManager:
     """
@@ -170,7 +171,9 @@ class ResultManager:
         
         # 如果配置了，保存可视化
         if self.output_config.get("visualization", True):
-            self._save_visualizations(output_dir)
+            # 确保可视化图像位于主输出目录的子目录中
+            vis_dir = output_dir / "image_visualizations"
+            self._save_visualizations(vis_dir)
         
         # 返回所有保存文件的路径
         return {
@@ -208,13 +211,17 @@ class ResultManager:
                 "images": images_data
             }
             
-            # 保存整理后的JSON结果
+            # 保存整理后的JSON结果到主输出目录
             patent_file = output_dir / f"{patent_id}_results.json"
             with open(patent_file, "w", encoding="utf-8") as f:
                 json.dump(organized_patent_data, f, ensure_ascii=False, indent=2)
         
         # 如果启用了中间文件，保存单独的图像结果
         if self.output_config.get("intermediate_files", False):
+            # 在主输出目录下创建子目录
+            image_results_dir = output_dir / "image_results"
+            image_results_dir.mkdir(exist_ok=True)
+            
             for image_id, image_data in self.image_results.items():
                 # 为该图像收集所有结果
                 molecules = self.get_molecule_results(image_id)
@@ -231,14 +238,13 @@ class ResultManager:
                     "predictions": image_data.get("predictions", {})
                 }
                 
-                # 保存单独的图像结果
-                image_file = output_dir / f"{image_id}_image_results.json"
+                # 保存单独的图像结果到子目录中
+                image_file = image_results_dir / f"{image_id}_image_results.json"
                 with open(image_file, "w", encoding="utf-8") as f:
                     json.dump(complete_image_data, f, ensure_ascii=False, indent=2)
     
     def _save_visualizations(self, output_dir: Path):
         """保存可视化图像"""
-        output_dir = output_dir/"image_visualizations"
         output_dir.mkdir(parents=True, exist_ok=True)
         for image_id, vis_data in self.visualization_data.items():
             for i, vis_img in enumerate(vis_data):
@@ -520,12 +526,8 @@ class ResultManager:
         return str(output_dir)
     
     def clear_results(self):
-        """
-        清理所有存储的结果，释放内存
-        
-        在处理大量数据后调用此方法可以释放内存资源
-        """
-        # 清空各种结果存储
+        """清理所有结果数据，释放内存"""
+        # 清空各种存储
         self.patent_results.clear()
         self.image_results.clear()
         self.molecule_results.clear()
@@ -533,6 +535,9 @@ class ResultManager:
         self.experiment_results.clear()
         self.visualization_data.clear()
         self.molscribe_results.clear()
+        
+        # 进行垃圾回收
+        gc.collect()
         
         # 返回自身以支持链式调用
         return self

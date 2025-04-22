@@ -11,6 +11,7 @@ import torch
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import random
+import gc
 
 # 配置日志
 logging.basicConfig(
@@ -35,6 +36,11 @@ def init_worker_process(device: str):
         # 设置工作进程的设备
         # 注意：不再设置 CUDA_VISIBLE_DEVICES 环境变量，因为这可能会影响其他进程
         # 而是直接使用 PyTorch 的设备管理
+
+        # 导入必要的库
+        import numpy as np
+        import random
+        import torch
 
         # 检查CUDA是否可用
         if torch.cuda.is_available():
@@ -63,10 +69,6 @@ def init_worker_process(device: str):
             device = "cpu"
 
         # 设置随机种子，保证可复现性
-        import numpy as np
-        import random
-        import torch
-
         seed = 42
         np.random.seed(seed)
         random.seed(seed)
@@ -86,6 +88,7 @@ def init_worker_process(device: str):
 def get_processor_for_process(device: str):
     """
     获取当前进程的分子共指处理器实例
+    此函数确保每个进程只创建一个处理器实例，实现进程内缓存和复用
 
     参数:
         device: 使用的设备
@@ -107,12 +110,15 @@ def get_processor_for_process(device: str):
         # 缓存处理器实例
         _processor_cache[device] = processor
         logger.info(f"进程 {os.getpid()} 的分子共指处理器创建完成")
+    else:
+        logger.info(f"进程 {os.getpid()} 复用已有处理器实例，设备: {device}")
 
     return _processor_cache[device]
 
 def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     处理单个专利文件的任务函数
+    该函数在进程池中执行，每个进程可以处理多个连续任务而不会被销毁
 
     参数:
         patent_file: 专利文件路径
@@ -125,6 +131,11 @@ def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dic
     try:
         start_time = time.time()
         logger.info(f"开始处理专利: {patent_file}")
+        
+        from api.core.server_core import PROCESS_LOCK, DEVICE_TASK_COUNT, POOL_TASK_COUNT
+        # 导入必要的类
+        from api.utils.result_manager import ResultManager
+        from api.processors.patent_processor import PatentProcessor
 
         # 确保输出目录存在
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -162,13 +173,9 @@ def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dic
         # 提取基本文件名（不含扩展名）作为专利ID
         patent_id = Path(patent_file).stem
         
-        # 设置输出子目录
-        patent_output_dir = Path(output_dir) / patent_id
-        patent_output_dir.mkdir(exist_ok=True)
-        
-        # 使用封装好的方法处理专利
-        from api.utils.result_manager import ResultManager
-        from api.processors.patent_processor import PatentProcessor
+        # 设置输出子目录 - 重要：在专利目录内部创建结果，而不是在全局结果目录
+        # 使用专利目录本身作为输出目录，这样processed_images.txt和其他输出文件都在同一个地方
+        patent_output_dir = Path(patent_file)
         
         # 创建结果管理器，配置开启JSON和Excel输出
         result_manager = ResultManager(output_config={
@@ -178,8 +185,9 @@ def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dic
             "intermediate_files": False
         })
         
-        # 获取处理器(用于共享已加载的模型)
+        # 获取处理器(用于共享已加载的模型)，注意这里会复用已有的处理器实例
         processor = get_processor_for_process(device)
+        # 为此任务分配一个新的结果管理器
         processor.result_manager = result_manager
         
         # 创建专利处理器并处理
@@ -211,8 +219,24 @@ def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dic
                 logger.error(f"生成Excel报告失败: {str(e)}")
                 traceback.print_exc()
         
-        # 清理资源
+        # 清理当前任务的资源，但保留处理器实例
         cleanup_patent_resources(result_manager, patent_processor)
+        
+        # 减少任务计数
+        try:
+            with PROCESS_LOCK:
+                # 减少设备任务计数
+                if device in DEVICE_TASK_COUNT:
+                    DEVICE_TASK_COUNT[device] = max(0, DEVICE_TASK_COUNT[device] - 1)
+                
+                # 找到进程池并减少其任务计数
+                pid = os.getpid()
+                for pool_key in list(POOL_TASK_COUNT.keys()):
+                    if pool_key.startswith(f"{device}_"):
+                        POOL_TASK_COUNT[pool_key] = max(0, POOL_TASK_COUNT[pool_key] - 1)
+                        break
+        except Exception as e:
+            logger.warning(f"更新任务计数时出错: {e}")
         
         # 构造结果字典
         elapsed_time = time.time() - start_time
@@ -235,6 +259,23 @@ def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dic
     except Exception as e:
         logger.error(f"处理专利时出错: {str(e)}")
         traceback.print_exc()
+        
+        # 减少任务计数
+        try:
+            from api.core.server_core import PROCESS_LOCK, DEVICE_TASK_COUNT, POOL_TASK_COUNT
+            with PROCESS_LOCK:
+                if 'device' in locals() and device in DEVICE_TASK_COUNT:
+                    DEVICE_TASK_COUNT[device] = max(0, DEVICE_TASK_COUNT[device] - 1)
+                
+                # 找到进程池并减少其任务计数
+                pid = os.getpid()
+                if 'device' in locals():
+                    for pool_key in list(POOL_TASK_COUNT.keys()):
+                        if pool_key.startswith(f"{device}_"):
+                            POOL_TASK_COUNT[pool_key] = max(0, POOL_TASK_COUNT[pool_key] - 1)
+                            break
+        except Exception as err:
+            logger.warning(f"错误处理时更新任务计数出错: {err}")
         
         return {
             "success": False,
@@ -352,7 +393,6 @@ def cleanup_worker_resources():
     _processor_cache.clear()
 
     # 强制垃圾回收
-    import gc
     gc.collect()
 
     # 清空CUDA缓存
@@ -363,29 +403,34 @@ def cleanup_worker_resources():
 
 def cleanup_patent_resources(result_manager=None, patent_processor=None):
     """
-    清理专利处理的资源，供 patent_task.py 调用
+    清理专利处理相关资源
     
     参数:
-        result_manager: 结果管理器实例，如果为None则忽略
-        patent_processor: 专利处理器实例，如果为None则忽略
+        result_manager: 结果管理器实例
+        patent_processor: 专利处理器实例
     """
-    logger.info(f"清理专利处理资源")
-    
-    # 清理结果管理器
-    if result_manager is not None:
-        try:
-            # 释放结果管理器资源
-            result_manager.cleanup()
-        except:
-            pass
-    
-    # 清理专利处理器（不删除实际的处理器对象，因为它可能被缓存和重用）
-    if patent_processor is not None:
-        try:
-            # 释放专利处理器资源
-            patent_processor.clear_cache()
-        except:
-            pass
-    
-    # 调用一般的资源清理
-    cleanup_worker_resources()
+    try:
+        logger.info(f"清理进程 {os.getpid()} 的资源")
+
+        # 清理结果管理器
+        if result_manager is not None:
+            result_manager.clear_results()
+        
+        # 清理专利处理器（但不清理其中的processor属性，因为需要复用）
+        if patent_processor is not None:
+            # 只清理专利处理器自身的资源，不清理内部共享的处理器
+            patent_processor.processor = None  # 断开对共享处理器的引用，但不删除它
+            patent_processor.result_manager = None
+        
+        # 执行垃圾回收以释放内存
+        gc.collect()
+        
+        # 如果有CUDA
+        if torch.cuda.is_available():
+            # 释放CUDA缓存
+            torch.cuda.empty_cache()
+        
+        logger.info(f"进程 {os.getpid()} 资源清理完成")
+    except Exception as e:
+        logger.error(f"清理资源时出错: {str(e)}")
+        traceback.print_exc()

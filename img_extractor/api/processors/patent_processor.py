@@ -240,6 +240,12 @@ class PatentProcessor:
         for image_id in self.result_manager.reaction_results:
             reactions_data.extend(self.result_manager.get_reaction_results(image_id))
         
+        # 确保输出文件位于专利目录中（与processed_images.txt相同目录）
+        patent_dir = Path(self.patent_dir)
+        if not output_file.parent.samefile(patent_dir):
+            output_file = patent_dir / output_file.name
+            print(f"调整Excel输出路径为: {output_file}")
+        
         # 调用处理器的Excel写入方法
         self.processor.write_to_excel(output_file, molecules_data, reactions_data)
         
@@ -248,30 +254,26 @@ class PatentProcessor:
     def clear_cache(self):
         """
         清理处理过程中产生的缓存，释放内存
-        
-        注意:不会释放预加载的处理器，只清理临时缓存和临时变量
+        但保留核心处理器以便复用
         """
-        try:
-            # 重置处理器的ResultManager引用，但保留处理器本身
-            if hasattr(self.processor, 'result_manager'):
-                self.processor.result_manager = None
+        # 保留processor引用以便复用
+        processor = self.processor
+        
+        # 清理中间变量
+        self.reaction_images = set()
+        self.formula_images = set()
+        
+        # 强制执行垃圾回收
+        gc.collect()
+        
+        # 如果启用了CUDA，也清理CUDA缓存
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            torch.cuda.empty_cache()
             
-            # 清空临时存储数据
-            self.reaction_images = set()
-            self.formula_images = set()
-            
-            # 强制垃圾回收
-            gc.collect()
-            
-            # 如果系统支持，释放GPU内存，但不重置设备和模型
-            if torch.cuda.is_available() and hasattr(self, 'device') and self.device.startswith('cuda'):
-                # 只释放未使用的缓存，不触发模型重新加载
-                torch.cuda.empty_cache()
-                
-            return True
-        except Exception as e:
-            print(f"清理缓存失败: {str(e)}")
-            return False
+        # 恢复processor引用
+        self.processor = processor
+        
+        return self
 
 
 class FolderProcessor:
