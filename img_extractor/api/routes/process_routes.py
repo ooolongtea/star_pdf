@@ -26,6 +26,8 @@ class ProcessResponse(BaseModel):
     patent_id: str
     message: str
     results_path: Optional[str] = None
+    download_url: Optional[str] = None
+    download_path: Optional[str] = None  # 添加下载路径字段
     processing_time: float
     details: Optional[Dict[str, Any]] = None
 
@@ -37,6 +39,8 @@ class BatchProcessResponse(BaseModel):
     failed: int
     message: str
     results_path: Optional[str] = None
+    download_url: Optional[str] = None
+    download_path: Optional[str] = None  # 添加下载路径字段
     processing_time: float
     failed_patents: Optional[List[Dict[str, Any]]] = None
 
@@ -89,12 +93,33 @@ async def _process_patent_task(patent_id: str, patent_path: str, output_dir: Opt
         # 计算处理时间
         processing_time = time.time() - start_time
 
+        # 构造下载链接
+        download_url = None
+        download_path = None
+        if result.get("success", False) and result.get("output_dir"):
+            # 将相对路径转换为API路径
+            output_dir = result.get("output_dir")
+
+            # 如果是远程模式，使用完整路径
+            if options and options.get("remote_mode", False):
+                # 对于远程模式，使用完整路径
+                download_path = patent_path  # 使用完整的专利路径
+                download_url = f"/api/download_results?patent_id={patent_path}"
+                logger.info(f"远程模式，使用完整路径作为下载链接: {patent_path}")
+            else:
+                # 对于本地模式，使用输出目录
+                download_path = output_dir  # 使用输出目录
+                download_url = f"/api/download_results?patent_id={output_dir}"
+                logger.info(f"本地模式，使用输出目录作为下载链接: {output_dir}")
+
         # 构造返回结果
         return {
             "success": result.get("success", False),
             "patent_id": patent_id,
             "message": result.get("message", "处理完成"),
             "results_path": result.get("output_dir"),
+            "download_url": download_url,
+            "download_path": download_path,  # 添加下载路径
             "processing_time": processing_time,
             "details": result
         }
@@ -219,6 +244,10 @@ async def process_batch(request: BatchProcessRequest):
         # 获取输出目录路径
         results_path = request.output_dir if request.output_dir else os.path.join(request.patent_dir, "results")
 
+        # 构造下载链接
+        download_url = f"/api/download_batch_results?result_dir={results_path}"
+        download_path = results_path  # 添加下载路径
+
         # 构造返回结果
         return BatchProcessResponse(
             success=processed > 0,
@@ -227,6 +256,8 @@ async def process_batch(request: BatchProcessRequest):
             failed=failed,
             message=f"批量处理完成，成功: {processed}，失败: {failed}",
             results_path=results_path,
+            download_url=download_url,
+            download_path=download_path,  # 添加下载路径
             processing_time=processing_time,
             failed_patents=failed_patents if failed > 0 else None
         )
@@ -389,6 +420,10 @@ async def upload_batch_and_process(
         # 获取输出目录路径
         results_path = output_dir if output_dir else os.path.join(upload_dir, "results")
 
+        # 构造下载链接
+        download_url = f"/api/download_batch_results?result_dir={results_path}"
+        download_path = results_path  # 添加下载路径
+
         # 构造返回结果
         return BatchProcessResponse(
             success=processed > 0,
@@ -397,6 +432,8 @@ async def upload_batch_and_process(
             failed=failed,
             message=f"批量处理完成，成功: {processed}，失败: {failed}",
             results_path=results_path,
+            download_url=download_url,
+            download_path=download_path,  # 添加下载路径
             processing_time=processing_time,
             failed_patents=failed_patents if failed > 0 else None
         )

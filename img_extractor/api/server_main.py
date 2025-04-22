@@ -45,6 +45,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # 暴露Content-Disposition头，必须为下载提供
 )
 
 # 全局服务器核心实例

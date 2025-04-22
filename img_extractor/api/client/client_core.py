@@ -7,6 +7,7 @@ import sys
 import json
 import requests
 import tempfile
+import io
 from pathlib import Path
 from typing import Dict, Optional, List, Any
 from pydantic import BaseModel
@@ -83,3 +84,102 @@ class PatentAPIClient:
         if hasattr(e, 'response') and e.response:
             print(f"服务器响应: {e.response.text}")
         return {"success": False, "error": str(e)}
+        
+    def download_file(self, remote_path: str, local_path: str) -> bool:
+        """
+        下载单个文件
+        
+        参数:
+            remote_path: 远程文件路径
+            local_path: 本地保存路径
+            
+        返回:
+            下载是否成功
+        """
+        try:
+            from urllib.parse import quote
+            encoded_path = quote(remote_path)
+            download_url = f"{self.server_url}/api/download_file?file_path={encoded_path}"
+            
+            response = requests.get(download_url, auth=self.auth, stream=True)
+            response.raise_for_status()
+            
+            # 保存文件
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    
+            return True
+        except Exception as e:
+            print(f"下载文件失败: {str(e)}")
+            return False
+            
+    def download_directory(self, remote_dir: str, local_dir: str) -> Dict:
+        """
+        下载整个目录
+        
+        参数:
+            remote_dir: 远程目录路径
+            local_dir: 本地保存目录
+            
+        返回:
+            包含下载信息的字典
+        """
+        try:
+            # 创建本地目录
+            local_path = Path(local_dir)
+            local_path.mkdir(parents=True, exist_ok=True)
+            
+            # 使用新的API下载目录
+            from urllib.parse import quote
+            encoded_dir = quote(remote_dir)
+            download_url = f"{self.server_url}/api/download_directory?dir_path={encoded_dir}"
+            
+            print(f"正在下载目录: {remote_dir}")
+            response = requests.get(download_url, auth=self.auth, stream=True)
+            response.raise_for_status()
+            
+            # 检查是否是ZIP文件
+            if response.headers.get('Content-Type') == 'application/zip':
+                # 解压到本地目录
+                import zipfile
+                zip_data = io.BytesIO(response.content)
+                
+                # 创建下载结果字典
+                downloaded_files = {
+                    "output_dir": str(local_path),
+                    "files": []
+                }
+                
+                # 解压文件
+                with zipfile.ZipFile(zip_data) as zipf:
+                    total_files = len(zipf.namelist())
+                    print(f"解压{total_files}个文件到 {local_path}")
+                    zipf.extractall(local_path)
+                    
+                    # 记录已下载文件
+                    for file_name in zipf.namelist():
+                        file_path = local_path / file_name
+                        
+                        # 记录文件类型
+                        file_type = "unknown"
+                        if file_path.suffix.lower() in ['.xlsx', '.xls']:
+                            file_type = "excel"
+                        elif file_path.suffix.lower() == '.json':
+                            file_type = "json"
+                        elif file_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+                            file_type = "image"
+                        
+                        downloaded_files["files"].append({
+                            "type": file_type,
+                            "path": str(file_path)
+                        })
+                        
+                print(f"成功下载目录到: {local_path}")
+                return downloaded_files
+            else:
+                print(f"服务器返回错误，不是ZIP文件: {response.headers.get('Content-Type')}")
+                return {"success": False, "error": "服务器没有返回ZIP文件"}
+        except Exception as e:
+            print(f"下载目录失败: {str(e)}")
+            return {"success": False, "error": str(e)}

@@ -410,3 +410,76 @@ except Exception as e:
 3. **负载均衡**：
    - 使用轮询方式分配任务
    - 监控设备负载，优先分配给低负载设备
+
+## 文件下载功能
+
+本系统提供多种方式下载处理后的文件：
+
+### 1. 单个专利处理结果下载
+
+当处理单个专利后，API 响应中会包含一个 `download_url` 字段，可直接通过该链接下载处理结果：
+
+```json
+{
+  "success": true,
+  "patent_id": "CN123456789",
+  "message": "处理完成",
+  "results_path": "/path/to/results/CN123456789",
+  "download_url": "/api/download_result?patent_id=CN123456789",
+  "processing_time": 10.5,
+  "details": {}
+}
+```
+
+也可以直接通过以下 API 下载结果：
+
+```
+GET /api/download_result?patent_id={patent_id}
+```
+
+### 2. 批量处理结果下载
+
+批量处理完成后，API 响应中包含下载链接：
+
+```json
+{
+  "success": true,
+  "total": 10,
+  "processed": 9,
+  "failed": 1,
+  "message": "批量处理完成，成功: 9，失败: 1",
+  "results_path": "/path/to/batch/results",
+  "download_url": "/api/download_batch_results?result_dir=/path/to/batch/results",
+  "processing_time": 45.2,
+  "failed_patents": []
+}
+```
+
+也可以直接通过以下 API 下载批量结果：
+
+```
+GET /api/download_batch_results?result_dir={result_dir}
+```
+
+### 3. 下载任意目录
+
+如需下载任意目录下的所有文件（打包为 ZIP），可使用：
+
+```
+GET /api/download_directory?dir_path={dir_path}
+```
+
+### 4. 下载单个文件
+
+要下载单个文件，可使用：
+
+```
+GET /api/download_file?file_path={file_path}
+```
+
+## 注意事项
+
+1. 所有的下载 API 都返回文件内容，如果是目录，会将其打包为 ZIP 文件
+2. 下载大量文件时可能需要等待一段时间，服务器会处理压缩打包
+3. 批量处理完成后，建议立即下载结果，因为结果可能会在系统清理时被删除
+4. 文件路径应使用服务器上有效的路径，通常是处理结果中返回的路径

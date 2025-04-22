@@ -2,16 +2,23 @@
 文件路由模块
 包含文件列表和下载的API接口
 """
-from fastapi import APIRouter, HTTPException, Query, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Query, Response, BackgroundTasks
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import logging
 import os
+import shutil
+import zipfile
+import io
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 import mimetypes
 from pathlib import Path
+import asyncio
+import time
+from api.utils.file_utils import get_file_size, get_file_type, find_patent_dirs
+from api.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 创建路由器
 router = APIRouter()
@@ -34,6 +41,14 @@ class DirectoryListResponse(BaseModel):
     files: List[FileInfo]
     message: Optional[str] = None
 
+class DownloadResponse(BaseModel):
+    """下载响应模型"""
+    success: bool
+    message: str
+    download_url: Optional[str] = None
+    file_count: Optional[int] = None
+    total_size: Optional[int] = None
+
 @router.get("/list_files", response_model=DirectoryListResponse)
 async def list_directory_files(dir_path: str = Query(..., description="要列出文件的目录路径")):
     """
@@ -55,40 +70,52 @@ async def list_directory_files(dir_path: str = Query(..., description="要列出
                 message=f"目录不存在: {dir_path}"
             )
 
-        # 获取目录中的所有文件和文件夹
-        file_list = []
+        # 获取目录中的所有文件
+        files = []
         for item in os.listdir(dir_path):
             item_path = os.path.join(dir_path, item)
             is_dir = os.path.isdir(item_path)
 
-            # 获取文件信息
-            file_info = {
-                "name": item,
-                "path": item_path,
-                "is_dir": is_dir
-            }
+            try:
+                # 获取文件信息
+                size = None
+                mime_type = None
+                modified_time = None
 
-            # 如果是文件，获取额外信息
-            if not is_dir:
-                try:
-                    file_stat = os.stat(item_path)
-                    file_info["size"] = file_stat.st_size
-                    file_info["modified_time"] = str(file_stat.st_mtime)
-                    file_info["mime_type"] = mimetypes.guess_type(item_path)[0] or "application/octet-stream"
-                except Exception as e:
-                    logger.warning(f"获取文件信息失败: {item_path}, 错误: {str(e)}")
+                if not is_dir:
+                    size = get_file_size(item_path)
+                    mime_type = get_file_type(item_path)
 
-            file_list.append(FileInfo(**file_info))
+                    # 获取修改时间
+                    stat = os.stat(item_path)
+                    modified_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
 
-        # 按照文件夹在前，文件在后，然后按名称排序
-        file_list.sort(key=lambda x: (not x.is_dir, x.name.lower()))
+                files.append(FileInfo(
+                    name=item,
+                    path=item_path,
+                    is_dir=is_dir,
+                    size=size,
+                    mime_type=mime_type,
+                    modified_time=modified_time
+                ))
+            except Exception as e:
+                logger.warning(f"获取文件 {item_path} 信息失败: {str(e)}")
+                # 如果获取详细信息失败，仍添加基本信息
+                files.append(FileInfo(
+                    name=item,
+                    path=item_path,
+                    is_dir=is_dir
+                ))
+
+        # 按文件夹在前、文件在后的顺序排序，每类内部按名称排序
+        files.sort(key=lambda x: (not x.is_dir, x.name))
 
         return DirectoryListResponse(
             success=True,
             directory=dir_path,
-            files=file_list
+            files=files,
+            message=f"共 {len(files)} 个文件/文件夹"
         )
-
     except Exception as e:
         logger.error(f"列出目录文件失败: {str(e)}")
         return DirectoryListResponse(
@@ -98,10 +125,220 @@ async def list_directory_files(dir_path: str = Query(..., description="要列出
             message=f"列出目录文件失败: {str(e)}"
         )
 
-@router.get("/download")
+async def create_zip_from_directory(directory_path: str) -> bytes:
+    """
+    将目录打包成zip文件
+
+    参数:
+        directory_path: 目录路径
+
+    返回:
+        bytes: zip文件的字节数据
+    """
+    if not os.path.exists(directory_path) or not os.path.isdir(directory_path):
+        raise ValueError(f"目录不存在: {directory_path}")
+
+    # 创建内存中的zip文件
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # 在根目录下添加所有文件和子目录
+        for root, dirs, files in os.walk(directory_path):
+            # 避免压缩隐藏文件和目录
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            files = [f for f in files if not f.startswith('.')]
+
+            for file in files:
+                file_path = os.path.join(root, file)
+                # 计算相对路径
+                rel_path = os.path.relpath(file_path, directory_path)
+                try:
+                    zipf.write(file_path, rel_path)
+                except Exception as e:
+                    logger.warning(f"压缩文件 {file_path} 失败: {str(e)}")
+
+    # 返回zip文件的字节数据
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
+
+@router.get("/download_directory")
+async def download_directory(dir_path: str = Query(..., description="要下载的目录路径")):
+    """
+    下载整个目录
+
+    参数:
+        dir_path: 目录路径
+
+    返回:
+        StreamingResponse: 流式响应包含zip文件
+    """
+    try:
+        # 检查目录是否存在
+        if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
+            raise HTTPException(status_code=404, detail=f"目录不存在: {dir_path}")
+
+        # 创建zip文件
+        zip_data = await create_zip_from_directory(dir_path)
+
+        # 设置文件名为目录名+时间戳
+        dir_name = os.path.basename(dir_path)
+        timestamp = int(time.time())
+        filename = f"{dir_name}_{timestamp}.zip"
+
+        # 返回zip文件
+        return StreamingResponse(
+            io.BytesIO(zip_data),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"打包目录失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"打包目录失败: {str(e)}")
+
+@router.get("/download_result")
+async def download_result(patent_id: str = Query(..., description="专利ID")):
+    """
+    下载专利处理结果
+
+    参数:
+        patent_id: 专利ID
+
+    返回:
+        StreamingResponse: 流式响应包含结果文件
+    """
+    try:
+        if not server_core:
+            raise HTTPException(status_code=500, detail="服务器核心未初始化")
+
+        logger.info(f"开始查找专利 {patent_id} 的处理结果")
+
+        # 初始化可能的路径列表
+        potential_paths = []
+
+        # 1. 首先检查标准结果目录
+        result_path = server_core.get_result_path(patent_id)
+        if os.path.exists(result_path) and os.path.isdir(result_path):
+            potential_paths.append(result_path)
+            logger.info(f"在标准结果目录找到专利: {result_path}")
+
+        # 2. 检查数据目录下的各个子目录
+        if hasattr(server_core, 'data_dir') and server_core.data_dir.exists():
+            # 在服务器数据目录中查找
+            for data_subdir in ['data', 'patents', 'uploads', 'temp_output']:
+                potential_dir = server_core.data_dir / data_subdir
+                if potential_dir.exists():
+                    # 直接匹配专利ID
+                    direct_match = potential_dir / patent_id
+                    if direct_match.exists() and direct_match.is_dir():
+                        potential_paths.append(direct_match)
+                        logger.info(f"在 {data_subdir} 目录下找到专利: {direct_match}")
+
+                    # 查找子目录
+                    try:
+                        for subdir in potential_dir.iterdir():
+                            if subdir.is_dir() and subdir.name == patent_id:
+                                potential_paths.append(subdir)
+                                logger.info(f"在 {data_subdir} 的子目录中找到专利: {subdir}")
+                    except Exception as e:
+                        logger.warning(f"遍历 {potential_dir} 目录时出错: {str(e)}")
+
+        # 3. 检查绝对路径
+        # 如果专利ID是一个完整路径，直接检查该路径
+        if os.path.sep in patent_id and os.path.exists(patent_id) and os.path.isdir(patent_id):
+            potential_paths.append(Path(patent_id))
+            logger.info(f"使用绝对路径找到专利: {patent_id}")
+
+        # 4. 检查当前工作目录
+        cwd_path = Path(os.getcwd()) / patent_id
+        if cwd_path.exists() and cwd_path.is_dir():
+            potential_paths.append(cwd_path)
+            logger.info(f"在当前工作目录找到专利: {cwd_path}")
+
+        # 如果没有找到任何目录，返回404错误
+        if not potential_paths:
+            logger.error(f"未找到专利 {patent_id} 的处理结果，已搜索所有可能的位置")
+            raise HTTPException(status_code=404, detail=f"未找到专利 {patent_id} 的处理结果")
+
+        # 使用找到的第一个目录
+        result_path = potential_paths[0]
+        logger.info(f"将使用专利目录: {result_path}")
+
+        # 创建zip文件
+        zip_data = await create_zip_from_directory(str(result_path))
+
+        # 设置文件名
+        filename = f"{patent_id}_results.zip"
+
+        # 返回zip文件
+        return StreamingResponse(
+            io.BytesIO(zip_data),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载专利结果失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载专利结果失败: {str(e)}")
+
+# 添加别名路由，处理/api/download_result请求
+@router.get("/download_results")
+async def download_results_alias(patent_id: str = Query(..., description="专利ID")):
+    """
+    /api/download_result的别名路由，用于向后兼容
+
+    参数:
+        patent_id: 专利ID
+
+    返回:
+        StreamingResponse: 流式响应包含结果文件
+    """
+    return await download_result(patent_id=patent_id)
+
+@router.get("/download_batch_results")
+async def download_batch_results(result_dir: str = Query(..., description="批处理结果目录路径")):
+    """
+    下载批处理的所有结果
+
+    参数:
+        result_dir: 批处理结果目录路径
+
+    返回:
+        StreamingResponse: 流式响应包含结果文件
+    """
+    try:
+        # 检查目录是否存在
+        if not os.path.exists(result_dir) or not os.path.isdir(result_dir):
+            raise HTTPException(status_code=404, detail=f"批处理结果目录不存在: {result_dir}")
+
+        # 创建zip文件
+        zip_data = await create_zip_from_directory(result_dir)
+
+        # 设置文件名
+        dir_name = os.path.basename(result_dir)
+        timestamp = int(time.time())
+        filename = f"batch_results_{dir_name}_{timestamp}.zip"
+
+        # 返回zip文件
+        return StreamingResponse(
+            io.BytesIO(zip_data),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载批处理结果失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载批处理结果失败: {str(e)}")
+
+@router.get("/download_file")
 async def download_file(file_path: str = Query(..., description="要下载的文件路径")):
     """
-    下载文件
+    下载单个文件
 
     参数:
         file_path: 文件路径
@@ -111,8 +348,17 @@ async def download_file(file_path: str = Query(..., description="要下载的文
     """
     try:
         # 检查文件是否存在
-        if not os.path.exists(file_path) or os.path.isdir(file_path):
-            raise HTTPException(status_code=404, detail=f"文件不存在或是一个目录: {file_path}")
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
+
+        # 如果是目录，返回特定错误消息
+        if os.path.isdir(file_path):
+            logger.error(f"下载请求的路径是目录，不是文件: {file_path}")
+            # 使用422状态码表示无法处理的实体
+            raise HTTPException(
+                status_code=422,
+                detail=f"无法下载目录，请求的路径是目录而非文件: {file_path}"
+            )
 
         # 获取文件名
         filename = os.path.basename(file_path)
@@ -181,23 +427,25 @@ async def search_files(
             # 如果是文件，获取额外信息
             if not is_dir:
                 try:
-                    file_stat = os.stat(file_path)
-                    file_info["size"] = file_stat.st_size
-                    file_info["modified_time"] = str(file_stat.st_mtime)
-                    file_info["mime_type"] = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+                    file_info["size"] = get_file_size(file_path)
+                    file_info["mime_type"] = get_file_type(file_path)
+
+                    # 获取修改时间
+                    stat = os.stat(file_path)
+                    file_info["modified_time"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
                 except Exception as e:
-                    logger.warning(f"获取文件信息失败: {file_path}, 错误: {str(e)}")
+                    logger.warning(f"获取文件 {file_path} 信息失败: {str(e)}")
 
             file_list.append(FileInfo(**file_info))
 
-        # 排序
-        file_list.sort(key=lambda x: (not x.is_dir, x.name.lower()))
+        # 按文件夹在前、文件在后的顺序排序，每类内部按名称排序
+        file_list.sort(key=lambda x: (not x.is_dir, x.name))
 
         return DirectoryListResponse(
             success=True,
             directory=dir_path,
             files=file_list,
-            message=f"找到 {len(file_list)} 个匹配项"
+            message=f"共找到 {len(file_list)} 个匹配项"
         )
 
     except Exception as e:
@@ -222,30 +470,46 @@ async def get_file_content(
         max_size: 最大读取字节数
 
     返回:
-        Response: 文件内容响应
+        Dict: 包含文件内容的字典
     """
     try:
         # 检查文件是否存在
-        if not os.path.exists(file_path) or os.path.isdir(file_path):
-            raise HTTPException(status_code=404, detail=f"文件不存在或是一个目录: {file_path}")
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
 
-        # 检查文件大小
+        # 如果是目录，返回特定错误消息
+        if os.path.isdir(file_path):
+            raise HTTPException(status_code=422, detail=f"无法读取目录内容: {file_path}")
+
+        # 获取文件大小
         file_size = os.path.getsize(file_path)
         if file_size > max_size:
-            raise HTTPException(status_code=413, detail=f"文件过大，无法读取。文件大小: {file_size}字节，最大支持: {max_size}字节")
+            truncated = True
+            content = f"文件太大，只显示前 {max_size} 字节。完整大小: {file_size} 字节"
+        else:
+            truncated = False
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read(max_size)
+            except UnicodeDecodeError:
+                # 如果不是文本文件，返回特定消息
+                return {
+                    "success": False,
+                    "file_path": file_path,
+                    "content": "此文件不是文本文件，无法显示内容",
+                    "truncated": False,
+                    "file_size": file_size,
+                    "mime_type": mimetypes.guess_type(file_path)[0] or "unknown"
+                }
 
-        # 猜测MIME类型
-        mime_type = mimetypes.guess_type(file_path)[0]
-
-        # 读取文件内容
-        with open(file_path, "rb") as f:
-            content = f.read()
-
-        # 返回文件内容
-        return Response(
-            content=content,
-            media_type=mime_type or "application/octet-stream"
-        )
+        return {
+            "success": True,
+            "file_path": file_path,
+            "content": content,
+            "truncated": truncated,
+            "file_size": file_size,
+            "mime_type": mimetypes.guess_type(file_path)[0] or "text/plain"
+        }
 
     except HTTPException:
         raise
@@ -258,8 +522,12 @@ def setup_routes(app, _server_core):
     设置路由
 
     参数:
-        app: FastAPI应用
-        _server_core: 服务器核心
+        app: FastAPI应用实例
+        _server_core: 服务器核心实例
     """
     global server_core
     server_core = _server_core
+    app.include_router(router, prefix="/api", tags=["files"])
+
+# 为了兼容旧代码，提供别名
+setup_file_routes = setup_routes

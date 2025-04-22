@@ -192,7 +192,11 @@ def upload_command(args):
     try:
         # 上传并处理专利
         start_time = time.time()
-        result = client.upload_and_process(args.patent_dir)
+        result = client.upload_and_process(
+            args.patent_dir,
+            download_dir=args.download_dir,
+            save_local=not args.no_save
+        )
         elapsed_time = time.time() - start_time
 
         # 打印结果
@@ -202,19 +206,36 @@ def upload_command(args):
                 print(f"输出目录: {result['output_dir']}")
             if "excel_file" in result:
                 print(f"Excel文件: {result['excel_file']}")
+
+            # 如果有本地保存的文件
+            if "local_files" in result:
+                local_dir = result["local_files"].get("output_dir")
+                local_files = result["local_files"].get("files", [])
+                if local_dir:
+                    print(f"本地保存目录: {local_dir}")
+                    print(f"已保存 {len(local_files)} 个文件")
         else:
             print(f"处理失败: {result.get('error', '未知错误')}")
+            if args.remote and "专利目录不存在" in result.get('error', ''):
+                print(f"提示：请确认 {args.patent_dir} 在服务器上存在，或使用正确的服务器路径")
 
         return 0 if result.get("success", False) else 1
+    except FileNotFoundError as e:
+        print(f"文件不存在错误: {str(e)}")
+        return 1
+    except requests.exceptions.ConnectionError:
+        print(f"连接服务器失败: {args.server}")
+        print(f"请确认服务器地址正确并且服务器已启动")
+        return 1
     except Exception as e:
         print(f"执行过程中出错: {str(e)}")
         return 1
 
 def upload_batch_command(args):
-    """上传并批量处理专利"""
-    # 确保目录或文件存在
-    if not args.remote and not os.path.exists(args.path):
-        print(f"错误：目录或文件不存在：{args.path}")
+    """上传并批处理专利"""
+    # 确保路径存在
+    if not args.remote and not os.path.exists(args.patent_dir):
+        print(f"错误：路径不存在：{args.patent_dir}")
         return 1
 
     # 创建客户端
@@ -225,25 +246,44 @@ def upload_batch_command(args):
         password=args.password
     )
 
-    print(f"{'远程' if args.remote else '本地'}模式下上传并批量处理：{args.path}")
+    print(f"{'远程' if args.remote else '本地'}模式下上传并批处理专利：{args.patent_dir}")
 
     try:
-        # 上传并批量处理
+        # 上传并批处理专利
         start_time = time.time()
-        result = client.upload_and_batch_process(args.path)
+        result = client.upload_and_batch_process(
+            args.patent_dir,
+            download_dir=args.download_dir,
+            save_local=not args.no_save
+        )
         elapsed_time = time.time() - start_time
 
         # 打印结果
         print(f"批处理完成！耗时: {elapsed_time:.2f}秒")
-        print(f"处理成功: {result.get('processed', 0)} 个专利")
-        print(f"处理失败: {result.get('failed', 0)} 个专利")
+        if result.get("success", False):
+            print(f"处理成功: {result.get('processed', 0)} 个专利")
+            print(f"处理失败: {result.get('failed', 0)} 个专利")
+            
+            # 如果有本地保存的文件
+            if "local_files" in result:
+                local_dir = result["local_files"].get("output_dir")
+                local_files = result["local_files"].get("files", [])
+                if local_dir:
+                    print(f"本地保存目录: {local_dir}")
+                    print(f"已保存 {len(local_files)} 个文件")
+        else:
+            print(f"批处理失败: {result.get('error', '未知错误')}")
+            if args.remote and "路径不存在" in result.get('error', ''):
+                print(f"提示：请确认 {args.patent_dir} 在服务器上存在，或使用正确的服务器路径")
 
-        if result.get("failed", 0) > 0:
-            print("\n失败的专利:")
-            for failure in result.get("failures", []):
-                print(f"  - {failure.get('patent_dir')}: {failure.get('error', '未知错误')}")
-
-        return 0 if result.get("failed", 0) == 0 else 1
+        return 0 if result.get("success", False) else 1
+    except FileNotFoundError as e:
+        print(f"文件不存在错误: {str(e)}")
+        return 1
+    except requests.exceptions.ConnectionError:
+        print(f"连接服务器失败: {args.server}")
+        print(f"请确认服务器地址正确并且服务器已启动")
+        return 1
     except Exception as e:
         print(f"执行过程中出错: {str(e)}")
         return 1
@@ -273,7 +313,7 @@ def status_command(args):
 
         # 打印服务器状态
         print("\n服务器状态:")
-        print(f"  状态: 正常运行")  # 固定显示“正常运行”
+        print(f"  状态: 正常运行")  # 固定显示"正常运行"
         print(f"  运行时间: {uptime_str}")
         print(f"  主机名: {system_info.get('hostname', 'unknown')}")
         print(f"  平台: {system_info.get('platform', 'unknown')}")
@@ -342,6 +382,8 @@ def main():
     parser.add_argument("--remote", action="store_true", help="远程模式，路径指向服务器上的位置")
     parser.add_argument("--username", default="zhouxingyu", help="服务器认证用户名，默认zhouxingyu")
     parser.add_argument("--password", default="zxy123456", help="服务器认证密码，默认zxy123456")
+    parser.add_argument("--download-dir", help="指定下载目录")
+    parser.add_argument("--no-save", action="store_true", help="不保存结果到本地")
 
     # 命令子解析器
     subparsers = parser.add_subparsers(dest="command", help="要执行的命令", required=True)
@@ -351,9 +393,7 @@ def main():
     process_parser.add_argument("patent_dir", help="专利目录路径")
     process_parser.add_argument("--device", type=int, help="设备ID (可选)")
     process_parser.add_argument("--wait", action="store_true", help="等待处理完成")
-    process_parser.add_argument("--no-save", action="store_true", help="不保存结果到本地")
     process_parser.add_argument("--output-dir", help="本地输出目录 (可选)")
-    process_parser.add_argument("--download-dir", help="远程结果下载目录，默认为工作目录下的downloads文件夹")
     process_parser.set_defaults(func=process_command)
 
     # 批量处理命令
@@ -361,9 +401,7 @@ def main():
     batch_parser.add_argument("input_dir", help="输入目录，包含多个专利目录")
     batch_parser.add_argument("--output-dir", help="输出目录 (可选)")
     batch_parser.add_argument("--wait", action="store_true", help="等待所有处理完成")
-    batch_parser.add_argument("--no-save", action="store_true", help="不保存结果到本地")
     batch_parser.add_argument("--local-output-dir", help="本地输出目录 (可选)")
-    batch_parser.add_argument("--download-dir", help="远程结果下载目录，默认为工作目录下的downloads文件夹")
     batch_parser.set_defaults(func=batch_command)
 
     # 上传并处理命令
@@ -373,7 +411,7 @@ def main():
 
     # 上传并批量处理命令
     upload_batch_parser = subparsers.add_parser("upload-batch", help="上传并批量处理专利")
-    upload_batch_parser.add_argument("path", help="专利目录或压缩包路径")
+    upload_batch_parser.add_argument("patent_dir", help="专利目录或压缩包路径")
     upload_batch_parser.set_defaults(func=upload_batch_command)
 
     # 状态查询命令

@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union, Callable
 from tqdm import tqdm
 import sys
+import io
+import zipfile
+from urllib.parse import quote
 
 from api.client.client_core import PatentAPIClient, ProcessRequest
 
@@ -87,15 +90,28 @@ class ProcessPatentClient(PatentAPIClient):
                     else:
                         print("正在从服务器下载结果...")
 
-                    # 下载并保存处理结果
-                    downloaded_files = self._download_remote_results(result, download_dir)
-                    if downloaded_files:
-                        result["local_files"] = downloaded_files
-
-                    if progress_callback:
-                        progress_callback(100, "远程结果已下载到本地", "completed")
+                    # 检查是否有新的下载链接
+                    if "download_url" in result:
+                        # 使用新的下载API
+                        downloaded_files = self._download_results_with_new_api(result, download_dir)
+                        if downloaded_files:
+                            result["local_files"] = downloaded_files
+                            if progress_callback:
+                                progress_callback(100, "结果已下载到本地", "completed")
+                            else:
+                                print("结果已下载到本地")
                     else:
-                        print("远程结果已下载到本地")
+                        # 使用旧的下载方法作为后备
+                        print(f"没有找到下载链接，使用旧的下载方法")
+                        downloaded_files = self._download_remote_results(result, download_dir)
+                        if downloaded_files:
+                            result["local_files"] = downloaded_files
+                            print(f"已下载文件数量: {len(downloaded_files.get('files', []))}")
+
+                        if progress_callback:
+                            progress_callback(100, "远程结果已下载到本地", "completed")
+                        else:
+                            print("远程结果已下载到本地")
                 else:
                     # 本地模式下，只需复制处理结果到指定目录
                     if progress_callback:
@@ -204,7 +220,7 @@ class ProcessPatentClient(PatentAPIClient):
                     result.update(final_result)
 
             # 如果处理成功并且需要保存到本地
-            if save_local and result.get("results", []):
+            if save_local and result.get("success"):
                 if self.remote_mode:
                     # 在远程模式下，需要从服务器下载批处理结果
                     if progress_callback:
@@ -212,20 +228,31 @@ class ProcessPatentClient(PatentAPIClient):
                     else:
                         print("正在从服务器下载批处理结果...")
 
-                    # 为每个成功处理的专利下载结果
-                    local_results = []
-                    for patent_result in result.get("results", []):
-                        # 下载远程结果
-                        downloaded_files = self._download_remote_results(patent_result, download_dir)
+                    # 检查是否有新的批量下载链接
+                    if "download_url" in result:
+                        # 使用新的下载API下载批量结果
+                        downloaded_files = self._download_batch_results_with_new_api(result, download_dir)
                         if downloaded_files:
-                            patent_result["local_files"] = downloaded_files
-                            local_results.append(patent_result)
-
-                    result["local_results"] = local_results
-                    if progress_callback:
-                        progress_callback(100, f"已下载 {len(local_results)} 个专利远程结果到本地", len(patent_dirs))
+                            result["local_files"] = downloaded_files
+                            if progress_callback:
+                                progress_callback(100, "批量结果已下载到本地", len(patent_dirs))
+                            else:
+                                print("批量结果已下载到本地")
                     else:
-                        print(f"已下载 {len(local_results)} 个专利远程结果到本地")
+                        # 为每个成功处理的专利下载结果（使用旧方法）
+                        local_results = []
+                        for patent_result in result.get("results", []):
+                            # 下载远程结果
+                            downloaded_files = self._download_remote_results(patent_result, download_dir)
+                            if downloaded_files:
+                                patent_result["local_files"] = downloaded_files
+                                local_results.append(patent_result)
+
+                        result["local_results"] = local_results
+                        if progress_callback:
+                            progress_callback(100, f"已下载 {len(local_results)} 个专利远程结果到本地", len(patent_dirs))
+                        else:
+                            print(f"已下载 {len(local_results)} 个专利远程结果到本地")
                 else:
                     # 本地模式下，直接保存处理结果到本地
                     if progress_callback:
@@ -252,13 +279,7 @@ class ProcessPatentClient(PatentAPIClient):
 
             return result
         except requests.exceptions.RequestException as e:
-            print(f"批量处理请求失败: {str(e)}")
-            if hasattr(e, 'response') and e.response:
-                print(f"服务器响应: {e.response.text}")
-
-            # 如果批量处理失败，则逐个处理
-            print("批量处理失败，尝试单个处理每个专利...")
-            return self._process_patents_individually(patent_dirs, wait_for_complete, progress_callback, save_local, local_output_dir, download_dir)
+            return self._handle_request_exception(e, f"批量处理请求失败 {input_root}")
 
     def _process_patents_individually(self, patent_dirs: List[str],
                                      wait_for_complete: bool = False,
@@ -438,7 +459,10 @@ class ProcessPatentClient(PatentAPIClient):
                     # 从路径中提取文件名，避免路径分隔符问题
                     excel_filename = Path(excel_file).name
                     # 构建下载URL，需要使用原始路径，因为服务器是Linux
-                    download_url = f"{self.server_url}/api/download?file={excel_file}"
+                    from urllib.parse import quote
+                    encoded_excel = quote(excel_file)
+                    download_url = f"{self.server_url}/api/download?file={encoded_excel}"
+                    print(f"下载Excel文件URL: {download_url}")
                     # 目标路径使用Path处理，确保在Windows上正确
                     dest_excel = download_dir / excel_filename
 
@@ -454,6 +478,8 @@ class ProcessPatentClient(PatentAPIClient):
                             "path": str(dest_excel)
                         })
                         print(f"成功下载文件到: {dest_excel}")
+                    elif response.status_code == 422:
+                        print(f"警告: 下载Excel文件失败，状态码422 - 可能是目录而非文件: {excel_file}")
                 except Exception as e:
                     print(f"下载Excel文件时出错: {str(e)}")
 
@@ -474,9 +500,15 @@ class ProcessPatentClient(PatentAPIClient):
                         for file_info in files_info:
                             file_path = file_info.get("path")
                             file_type = file_info.get("type", "unknown")
+                            is_dir = file_info.get("is_dir", False)
 
                             # 跳过已下载的Excel文件
                             if excel_file and file_path == excel_file:
+                                continue
+
+                            # 跳过目录，只下载文件
+                            if is_dir:
+                                print(f"跳过目录: {file_path}")
                                 continue
 
                             # 只下载根目录中的文件，不包括子目录
@@ -499,26 +531,35 @@ class ProcessPatentClient(PatentAPIClient):
                                             for chunk in response.iter_content(chunk_size=8192):
                                                 f.write(chunk)
 
-                                    downloaded_files["files"].append({
-                                        "type": file_type,
-                                        "path": str(dest_file)
-                                    })
-                                    print(f"成功下载文件到: {dest_file}")
+                                        downloaded_files["files"].append({
+                                            "type": file_type,
+                                            "path": str(dest_file)
+                                        })
+                                        print(f"成功下载文件到: {dest_file}")
+                                    elif response.status_code == 422:
+                                        print(f"警告: 下载文件失败，状态码422 - 可能是目录而非文件: {file_path}")
                                 except Exception as e:
                                     print(f"下载文件 {file_path} 时出错: {str(e)}")
                 except Exception as e:
                     print(f"获取主目录文件列表时出错: {str(e)}")
 
             # 下载目录及其所有内容（包括子目录）
-            output_dir = result.get("output_dir")
+            # 服务器可能返回 output_dir 或 results_path
+            output_dir = result.get("output_dir") or result.get("results_path")
+            print(f"输出目录路径: {output_dir}")
             if output_dir:
                 try:
                     # 构建列表URL，使用URL编码处理路径中的特殊字符
                     from urllib.parse import quote
                     encoded_dir = quote(output_dir)
+                    print(f"开始下载输出目录: {output_dir}")
 
                     # 递归下载所有文件和子目录
                     self._download_directory_recursive(output_dir, download_dir, downloaded_files)
+
+                    # 检查是否有JSON文件被下载
+                    json_files = [f for f in downloaded_files["files"] if f.get("path", "").endswith(".json")]
+                    print(f"已下载 {len(json_files)} 个JSON文件")
 
                 except Exception as e:
                     print(f"获取输出目录文件列表时出错: {str(e)}")
@@ -544,17 +585,34 @@ class ProcessPatentClient(PatentAPIClient):
 
         # 列出远程目录中的所有文件（包括子目录中的文件）
         encoded_dir = quote(remote_dir)
-        # 使用recursive=true参数来一次性获取所有文件
-        list_url = f"{self.server_url}/list_files?dir={encoded_dir}&recursive=true"
+        # 使用search_files接口代替list_files
+        list_url = f"{self.server_url}/api/search_files?dir_path={encoded_dir}&pattern=*&recursive=true"
+        print(f"获取文件列表URL: {list_url}")
         response = requests.get(list_url, auth=self.auth)
+        print(f"响应状态码: {response.status_code}")
 
         if response.status_code == 200:
             files_info = response.json().get("files", [])
+            print(f"找到 {len(files_info)} 个文件")
+            if len(files_info) > 0:
+                print(f"第一个文件: {files_info[0]}")
+
+            # 特别检查JSON文件
+            json_files = [f for f in files_info if f.get("path", "").endswith(".json")]
+            print(f"找到 {len(json_files)} 个JSON文件")
+            if len(json_files) > 0:
+                print(f"第一个JSON文件: {json_files[0]}")
 
             # 创建文件路径映射，用于创建目录结构
             for file_info in files_info:
                 file_path = file_info.get("path")
                 file_type = file_info.get("type", "unknown")
+                is_dir = file_info.get("is_dir", False)
+
+                # 跳过目录，只下载文件
+                if is_dir:
+                    print(f"跳过目录: {file_path}")
+                    continue
 
                 if file_path:
                     try:
@@ -589,7 +647,8 @@ class ProcessPatentClient(PatentAPIClient):
 
                         # 构建下载URL
                         encoded_file = quote(file_path)
-                        download_url = f"{self.server_url}/download?file={encoded_file}"
+                        download_url = f"{self.server_url}/api/download?file={encoded_file}"
+                        print(f"下载文件URL: {download_url}")
 
                         # 下载文件
                         response = requests.get(download_url, auth=self.auth, stream=True)
@@ -603,6 +662,8 @@ class ProcessPatentClient(PatentAPIClient):
                                 "path": str(dest_file)
                             })
                             print(f"成功下载文件到: {dest_file}")
+                        elif response.status_code == 422:
+                            print(f"警告: 下载文件失败，状态码422 - 可能是目录而非文件: {file_path}")
                     except Exception as e:
                         print(f"下载文件 {file_path} 时出错: {str(e)}")
 
@@ -629,18 +690,34 @@ class ProcessPatentClient(PatentAPIClient):
         # 确保本地目录存在
         local_dir.mkdir(parents=True, exist_ok=True)
 
-        # 列出当前目录中的文件
+        # 列出当前目录中的文件 - 直接使用search_files接口
         encoded_dir = quote(remote_dir)
-        list_url = f"{self.server_url}/list_files?dir={encoded_dir}"
+        list_url = f"{self.server_url}/api/search_files?dir_path={encoded_dir}&pattern=*&recursive=false"
+        print(f"备用方法获取文件列表URL: {list_url}")
         response = requests.get(list_url, auth=self.auth)
 
         if response.status_code == 200:
             files_info = response.json().get("files", [])
+            print(f"备用方法找到 {len(files_info)} 个文件")
+            if len(files_info) > 0:
+                print(f"备用方法第一个文件: {files_info[0]}")
+
+            # 特别检查JSON文件
+            json_files = [f for f in files_info if f.get("path", "").endswith(".json")]
+            print(f"备用方法找到 {len(json_files)} 个JSON文件")
+            if len(json_files) > 0:
+                print(f"备用方法第一个JSON文件: {json_files[0]}")
 
             # 下载当前目录中的每个文件
             for file_info in files_info:
                 file_path = file_info.get("path")
                 file_type = file_info.get("type", "unknown")
+                is_dir = file_info.get("is_dir", False)
+
+                # 跳过目录，只下载文件
+                if is_dir:
+                    print(f"跳过目录: {file_path}")
+                    continue
 
                 if file_path:
                     try:
@@ -652,7 +729,7 @@ class ProcessPatentClient(PatentAPIClient):
 
                         # 构建下载URL
                         encoded_file = quote(file_path)
-                        download_url = f"{self.server_url}/download?file={encoded_file}"
+                        download_url = f"{self.server_url}/api/download?file={encoded_file}"
 
                         # 下载文件
                         response = requests.get(download_url, auth=self.auth, stream=True)
@@ -666,15 +743,20 @@ class ProcessPatentClient(PatentAPIClient):
                                 "path": str(dest_file)
                             })
                             print(f"成功下载文件到: {dest_file}")
+                        elif response.status_code == 422:
+                            print(f"警告: 下载文件失败，状态码422 - 可能是目录而非文件: {file_path}")
                     except Exception as e:
                         print(f"下载文件 {filename} 时出错: {str(e)}")
 
-        # 获取并处理子目录
-        subdirs_url = f"{self.server_url}/list_subdirs?dir={encoded_dir}"
+        # 获取并处理子目录 - 使用search_files接口代替list_subdirs
+        subdirs_url = f"{self.server_url}/api/search_files?dir_path={encoded_dir}&pattern=*&recursive=false"
+        print(f"获取子目录URL: {subdirs_url}")
         subdirs_response = requests.get(subdirs_url, auth=self.auth)
 
         if subdirs_response.status_code == 200:
-            subdirs = subdirs_response.json().get("subdirs", [])
+            # 从search_files响应中提取目录
+            files_info = subdirs_response.json().get("files", [])
+            subdirs = [file_info for file_info in files_info if file_info.get("is_dir", False)]
 
             # 递归下载每个子目录
             for subdir in subdirs:
@@ -902,3 +984,202 @@ class ProcessPatentClient(PatentAPIClient):
             "error": "批处理操作超时",
             "task_results": task_status
         }
+
+    # 添加新的下载方法
+
+    def _download_results_with_new_api(self, result: Dict, download_dir: Optional[str] = None) -> Dict:
+        """
+        使用新的下载API下载处理结果
+
+        参数:
+            result: 处理结果字典，包含download_url
+            download_dir: 指定下载目录路径，如果为None则使用默认的downloads目录
+
+        返回:
+            下载的文件路径字典
+        """
+        try:
+            # 获取专利ID
+            patent_id = result.get("patent_id", "unknown")
+
+            # 创建下载目录
+            if download_dir:
+                base_download_dir = Path(download_dir)
+            else:
+                base_download_dir = Path(os.getcwd()) / "downloads"
+
+            download_dir = base_download_dir / patent_id
+            download_dir.mkdir(parents=True, exist_ok=True)
+
+            # 获取下载URL和路径
+            download_url = result.get("download_url")
+            download_path = result.get("download_path")
+
+            if not download_url:
+                print("警告: 结果中没有下载链接")
+                return {}
+
+            # 如果服务器返回了下载路径，使用它作为参数
+            if download_path:
+                # 使用服务器返回的路径替换URL中的patent_id
+                download_url = f"{self.server_url}/api/download_results?patent_id={download_path}"
+                print(f"使用服务器返回的路径作为下载参数: {download_path}")
+            else:
+                # 确保URL完整
+                if not download_url.startswith("http"):
+                    download_url = f"{self.server_url}{download_url}"
+
+            print(f"正在下载专利结果: {download_url}")
+
+            # 下载ZIP文件
+            response = requests.get(download_url, auth=self.auth, stream=True)
+            response.raise_for_status()
+
+            # 检查是否是ZIP文件
+            if response.headers.get('Content-Type') == 'application/zip':
+                # 处理Zip文件
+                zip_data = io.BytesIO(response.content)
+
+                # 创建下载的文件路径字典
+                downloaded_files = {
+                    "output_dir": str(download_dir),
+                    "files": []
+                }
+
+                # 解压文件
+                with zipfile.ZipFile(zip_data) as zipf:
+                    total_files = len(zipf.namelist())
+                    print(f"解压{total_files}个文件到 {download_dir}")
+
+                    # 解压所有文件
+                    for file_name in zipf.namelist():
+                        zipf.extract(file_name, download_dir)
+                        file_path = download_dir / file_name
+
+                        # 记录已下载的文件
+                        file_type = "unknown"
+                        if file_path.suffix.lower() == '.xlsx':
+                            file_type = "excel"
+                        elif file_path.suffix.lower() == '.json':
+                            file_type = "json"
+                        elif file_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+                            file_type = "image"
+
+                        downloaded_files["files"].append({
+                            "type": file_type,
+                            "path": str(file_path)
+                        })
+
+                print(f"成功将处理结果下载到: {download_dir}")
+                return downloaded_files
+            else:
+                print(f"警告: 服务器返回的不是zip文件: {response.headers.get('Content-Type')}")
+                return {}
+
+        except Exception as e:
+            print(f"下载处理结果时出错: {str(e)}")
+            return {}
+
+    def _download_batch_results_with_new_api(self, result: Dict, download_dir: Optional[str] = None) -> Dict:
+        """
+        使用新的下载API下载批量处理结果
+
+        参数:
+            result: 批量处理结果字典，包含download_url
+            download_dir: 指定下载目录路径，如果为None则使用默认的downloads目录
+
+        返回:
+            下载的文件路径字典
+        """
+        try:
+            # 提取目录名称，如果没有则使用时间戳
+            batch_name = "batch_results"
+            if "results_path" in result:
+                batch_name = Path(result["results_path"]).name
+
+            # 创建下载目录
+            if download_dir:
+                base_download_dir = Path(download_dir)
+            else:
+                base_download_dir = Path(os.getcwd()) / "downloads"
+
+            # 添加时间戳避免覆盖
+            timestamp = int(time.time())
+            download_dir = base_download_dir / f"{batch_name}_{timestamp}"
+            download_dir.mkdir(parents=True, exist_ok=True)
+
+            # 获取下载URL和路径
+            download_url = result.get("download_url")
+            download_path = result.get("download_path")
+
+            if not download_url:
+                print("警告: 批量处理结果中没有下载链接")
+                return {}
+
+            # 如果服务器返回了下载路径，使用它作为参数
+            if download_path:
+                # 使用服务器返回的路径替换URL中的result_dir
+                download_url = f"{self.server_url}/api/download_batch_results?result_dir={download_path}"
+                print(f"使用服务器返回的路径作为批量下载参数: {download_path}")
+            else:
+                # 确保URL完整
+                if not download_url.startswith("http"):
+                    download_url = f"{self.server_url}{download_url}"
+
+            print(f"正在下载批量处理结果: {download_url}")
+
+            # 下载ZIP文件
+            response = requests.get(download_url, auth=self.auth, stream=True)
+            response.raise_for_status()
+
+            # 检查是否是ZIP文件
+            if response.headers.get('Content-Type') == 'application/zip':
+                # 处理Zip文件
+                print(f"接收到的数据大小: {len(response.content)} 字节")
+                zip_data = io.BytesIO(response.content)
+
+                # 创建下载的文件路径字典
+                downloaded_files = {
+                    "output_dir": str(download_dir),
+                    "files": []
+                }
+
+                # 解压文件
+                try:
+                    with zipfile.ZipFile(zip_data) as zipf:
+                        total_files = len(zipf.namelist())
+                        print(f"解压{total_files}个文件到 {download_dir}")
+
+                        # 解压所有文件
+                        for file_name in zipf.namelist():
+                            zipf.extract(file_name, download_dir)
+                            file_path = download_dir / file_name
+
+                            # 记录已下载的文件
+                            file_type = "unknown"
+                            if file_path.suffix.lower() == '.xlsx':
+                                file_type = "excel"
+                            elif file_path.suffix.lower() == '.json':
+                                file_type = "json"
+                            elif file_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+                                file_type = "image"
+
+                            downloaded_files["files"].append({
+                                "type": file_type,
+                                "path": str(file_path)
+                            })
+
+                    print(f"成功将批量处理结果下载到: {download_dir}")
+                    return downloaded_files
+                except zipfile.BadZipFile:
+                    print(f"下载的不是有效的ZIP文件")
+                    with open(download_dir / "error_content.txt", "wb") as f:
+                        f.write(response.content[:1000])  # 保存前1000字节以便调试
+                    return {}
+            else:
+                print(f"警告: 服务器返回的不是zip文件: {response.headers.get('Content-Type')}")
+                return {}
+
+        except Exception as e:
+            print(f"下载批量处理结果时出错: {str(e)}")
+            return {}
