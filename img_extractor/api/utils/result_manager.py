@@ -211,7 +211,7 @@ class ResultManager:
                 "images": images_data
             }
 
-            # 保存整理后的JSON结果到主输出目录
+            # 保存整理后的JSON结果到主输出目录到主输出目录
             patent_file = output_dir / f"{patent_id}_results.json"
             with open(patent_file, "w", encoding="utf-8") as f:
                 json.dump(organized_patent_data, f, ensure_ascii=False, indent=2)
@@ -535,6 +535,9 @@ class ResultManager:
         self.visualization_data.clear()
         self.molscribe_results.clear()
 
+        # 进行垃圾回收
+        gc.collect()
+        
         # 进行垃圾回收
         gc.collect()
 
