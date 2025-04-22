@@ -192,42 +192,77 @@ async def process_batch(request: BatchProcessRequest):
         # 记录开始时间
         start_time = time.time()
 
-        # 获取目录中的所有PDF文件
-        import glob
-        patent_files = glob.glob(os.path.join(request.patent_dir, request.file_pattern))
+        # 获取要处理的专利目录列表
+        patent_dirs = []
 
-        if not patent_files:
-            return BatchProcessResponse(
-                success=False,
-                total=0,
-                processed=0,
-                failed=0,
-                message=f"在目录 {request.patent_dir} 中未找到匹配 {request.file_pattern} 的文件",
-                processing_time=time.time() - start_time
-            )
+        # 检查是否在远程模式下
+        if remote_mode:
+            logger.info(f"远程模式下处理目录: {request.patent_dir}")
 
-        # 处理所有专利
-        total = len(patent_files)
-        processed = 0
-        failed = 0
-        failed_patents = []
+            # 检查是否有patent_dirs选项（客户端可能在选项中传递了多个目录）
+            if request.options and "patent_dirs" in request.options:
+                patent_dirs = request.options.get("patent_dirs", [])
+                logger.info(f"从选项中获取到 {len(patent_dirs)} 个专利目录")
+
+            # 如果没有提供多个目录或只有一个目录（根目录），则检查主目录中的子目录
+            if not patent_dirs or len(patent_dirs) <= 1:
+                main_dir = request.patent_dir
+                if os.path.exists(main_dir) and os.path.isdir(main_dir):
+                    # 查找子目录（这些子目录就是专利目录）
+                    subdirs = [os.path.join(main_dir, d) for d in os.listdir(main_dir)
+                              if os.path.isdir(os.path.join(main_dir, d)) and not d.startswith('.')]
+
+                    if subdirs:
+                        logger.info(f"在目录 {main_dir} 中找到 {len(subdirs)} 个专利子目录")
+                        patent_dirs = subdirs
+                    else:
+                        logger.warning(f"在目录 {main_dir} 中未找到专利子目录，将尝试直接处理该目录")
+                        patent_dirs = [main_dir]  # 如果没有子目录，将主目录作为专利目录
+                else:
+                    logger.warning(f"目录不存在或不是目录: {main_dir}")
+        else:
+            # 本地模式下，直接在指定目录中查找文件
+            patent_dirs = [request.patent_dir]
+
+        # 现在我们有了专利目录列表，开始处理每个专利
+        logger.info(f"开始处理 {len(patent_dirs)} 个专利目录")
 
         # 创建任务列表
         tasks = []
-        for file_path in patent_files:
-            patent_id = os.path.splitext(os.path.basename(file_path))[0]
+        for patent_dir in patent_dirs:
+            # 从目录名提取专利ID
+            patent_id = os.path.basename(patent_dir)
+            # logger.info(f"添加专利任务: {patent_id}, 路径: {patent_dir}")
+
+            # 创建任务
             task = _process_patent_task(
                 patent_id=patent_id,
-                patent_path=file_path,
+                patent_path=patent_dir,  # 直接使用专利目录路径
                 output_dir=request.output_dir,
                 options=request.options
             )
             tasks.append(task)
 
+        # 如果没有专利目录，返回错误
+        if not tasks:
+            return BatchProcessResponse(
+                success=False,
+                total=0,
+                processed=0,
+                failed=0,
+                message=f"在目录 {request.patent_dir} 中未找到专利目录",
+                processing_time=time.time() - start_time
+            )
+
         # 并行执行所有任务
         results = await asyncio.gather(*tasks)
 
         # 处理结果
+        total = len(results)
+        processed = 0
+        failed = 0
+        failed_patents = []
+
         for result in results:
             if result.get("success", False):
                 processed += 1
@@ -242,11 +277,24 @@ async def process_batch(request: BatchProcessRequest):
         processing_time = time.time() - start_time
 
         # 获取输出目录路径
-        results_path = request.output_dir if request.output_dir else os.path.join(request.patent_dir, "results")
+        # 在远程模式下，使用原始目录路径，不添加results后缀
+        if remote_mode:
+            results_path = request.patent_dir
+            logger.info(f"远程模式下使用原始目录路径: {results_path}")
+        else:
+            results_path = request.output_dir if request.output_dir else os.path.join(request.patent_dir, "results")
+
+        # 在远程模式下，检查服务器上的路径
+        if remote_mode:
+            logger.info(f"远程模式下的输出目录路径: {results_path}")
+
+            # 在远程模式下，始终使用原始路径，不覆盖
+            logger.info(f"远程模式下保持原始路径: {results_path}")
 
         # 构造下载链接
         download_url = f"/api/download_batch_results?result_dir={results_path}"
         download_path = results_path  # 添加下载路径
+        logger.info(f"构造下载链接: {download_url}, 路径: {download_path}")
 
         # 构造返回结果
         return BatchProcessResponse(

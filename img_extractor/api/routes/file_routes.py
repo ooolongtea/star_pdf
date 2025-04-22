@@ -310,15 +310,72 @@ async def download_batch_results(result_dir: str = Query(..., description="批�
         StreamingResponse: 流式响应包含结果文件
     """
     try:
-        # 检查目录是否存在
-        if not os.path.exists(result_dir) or not os.path.isdir(result_dir):
+        logger.info(f"尝试下载批处理结果，路径: {result_dir}")
+
+        # 尝试处理可能的路径问题
+        potential_paths = []
+
+        # 1. 首先检查原始路径
+        if os.path.exists(result_dir) and os.path.isdir(result_dir):
+            potential_paths.append(result_dir)
+            logger.info(f"原始路径存在: {result_dir}")
+
+        # 1.1 检查原始路径下的results目录
+        results_dir = os.path.join(result_dir, "results")
+        if os.path.exists(results_dir) and os.path.isdir(results_dir):
+            potential_paths.append(results_dir)
+            logger.info(f"原始路径下的results目录存在: {results_dir}")
+
+        # 2. 如果是远程路径，尝试在服务器数据目录中查找相应的目录
+        if server_core and hasattr(server_core, 'data_dir'):
+            # 提取目录名称
+            dir_name = os.path.basename(result_dir)
+            parent_dir = os.path.dirname(result_dir)
+            parent_name = os.path.basename(parent_dir)
+
+            # 在服务器数据目录中查找相应的目录
+            for data_subdir in ['data', 'patents', 'uploads', 'temp_output', 'results']:
+                # 检查数据目录下的子目录
+                potential_dir = server_core.data_dir / data_subdir
+                if potential_dir.exists():
+                    # 检查是否有相同名称的目录
+                    if (potential_dir / dir_name).exists() and (potential_dir / dir_name).is_dir():
+                        potential_paths.append(potential_dir / dir_name)
+                        logger.info(f"在数据目录中找到目录: {potential_dir / dir_name}")
+
+                    # 检查是否有相同父目录名称的目录
+                    if (potential_dir / parent_name).exists() and (potential_dir / parent_name).is_dir():
+                        if (potential_dir / parent_name / dir_name).exists() and (potential_dir / parent_name / dir_name).is_dir():
+                            potential_paths.append(potential_dir / parent_name / dir_name)
+                            logger.info(f"在数据目录中找到目录: {potential_dir / parent_name / dir_name}")
+
+        # 3. 如果是远程路径，尝试在当前工作目录中查找相应的目录
+        dir_name = os.path.basename(result_dir)
+        cwd_path = Path(os.getcwd()) / dir_name
+        if cwd_path.exists() and cwd_path.is_dir():
+            potential_paths.append(cwd_path)
+            logger.info(f"在当前工作目录中找到目录: {cwd_path}")
+
+        # 4. 如果是远程路径，尝试在当前工作目录的results子目录中查找
+        results_path = Path(os.getcwd()) / "results"
+        if results_path.exists() and results_path.is_dir():
+            potential_paths.append(results_path)
+            logger.info(f"在当前工作目录的results子目录中找到目录: {results_path}")
+
+        # 如果没有找到任何目录，返回404错误
+        if not potential_paths:
+            logger.error(f"未找到批处理结果目录: {result_dir}")
             raise HTTPException(status_code=404, detail=f"批处理结果目录不存在: {result_dir}")
 
+        # 使用找到的第一个目录
+        actual_dir = str(potential_paths[0])
+        logger.info(f"使用目录: {actual_dir}")
+
         # 创建zip文件
-        zip_data = await create_zip_from_directory(result_dir)
+        zip_data = await create_zip_from_directory(actual_dir)
 
         # 设置文件名
-        dir_name = os.path.basename(result_dir)
+        dir_name = os.path.basename(actual_dir)
         timestamp = int(time.time())
         filename = f"batch_results_{dir_name}_{timestamp}.zip"
 

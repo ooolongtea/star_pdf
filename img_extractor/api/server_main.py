@@ -133,7 +133,7 @@ def init_server(data_dir: str = None,
         )
         process_pools.append(pool)
         pool_device_map[pool] = device
-        logger.info(f"为设备 {device} 创建了 {num_processes} 个进程（进程池将被复用）")
+        logger.info(f"为设备 {device} 创建了 {num_processes} 个进程")
     
     # 创建并注册处理器管理器
     processor_manager = ProcessorManager(process_pools, pool_device_map)

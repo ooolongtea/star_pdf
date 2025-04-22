@@ -182,6 +182,20 @@ class ProcessPatentClient(PatentAPIClient):
         # 使用第一个目录作为批处理的根目录
         patent_dir = patent_dirs[0] if patent_dirs else ""
 
+        # 保存当前批处理目录，以便后续使用
+        self.current_batch_dir = patent_dir
+
+        # 在远程模式下，确保我们传递完整的目录路径
+        if self.remote_mode:
+            print(f"远程模式下使用目录: {patent_dir}")
+            # 如果有多个目录，打印它们以便调试
+            if len(patent_dirs) > 1:
+                print(f"将在选项中传递 {len(patent_dirs)} 个目录")
+                for i, dir_path in enumerate(patent_dirs[:5]):
+                    print(f"  目录 {i+1}: {dir_path}")
+                if len(patent_dirs) > 5:
+                    print(f"  ... 及其他 {len(patent_dirs)-5} 个目录")
+
         data = {
             "patent_dir": patent_dir,
             "output_dir": str(output_root) if output_root else None,
@@ -1118,9 +1132,36 @@ class ProcessPatentClient(PatentAPIClient):
 
             # 如果服务器返回了下载路径，使用它作为参数
             if download_path:
-                # 使用服务器返回的路径替换URL中的result_dir
-                download_url = f"{self.server_url}/api/download_batch_results?result_dir={download_path}"
-                print(f"使用服务器返回的路径作为批量下载参数: {download_path}")
+                # 在远程模式下，使用服务器返回的下载链接
+                if self.remote_mode:
+                    # 直接使用下载链接，不使用路径
+                    if download_url.startswith("/"):
+                        download_url = f"{self.server_url}{download_url}"
+                    print(f"远程模式下使用下载链接: {download_url}")
+
+                    # 检查下载路径是否与原始路径一致
+                    original_path = self.current_batch_dir
+                    if original_path and download_path != original_path:
+                        print(f"服务器返回的路径 {download_path} 与原始路径 {original_path} 不一致")
+                        # 使用原始路径
+                        download_path = original_path
+                        download_url = f"{self.server_url}/api/download_batch_results?result_dir={download_path}"
+                        print(f"使用原始路径更新下载链接: {download_url}")
+
+                    # 确保下载路径不包含“results”后缀
+                    if "/results" in download_path or "\\results" in download_path:
+                        # 移除results后缀
+                        if download_path.endswith("/results"):
+                            download_path = download_path[:-8]
+                        elif download_path.endswith("\\results"):
+                            download_path = download_path[:-8]
+                        print(f"移除results后缀后的路径: {download_path}")
+                        download_url = f"{self.server_url}/api/download_batch_results?result_dir={download_path}"
+                        print(f"更新后的下载链接: {download_url}")
+                else:
+                    # 非远程模式下，使用服务器返回的路径替换URL中的result_dir
+                    download_url = f"{self.server_url}/api/download_batch_results?result_dir={download_path}"
+                    print(f"使用服务器返回的路径作为批量下载参数: {download_path}")
             else:
                 # 确保URL完整
                 if not download_url.startswith("http"):

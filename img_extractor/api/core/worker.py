@@ -45,11 +45,11 @@ def init_worker_process(device: str):
         # 检查CUDA是否可用
         if torch.cuda.is_available():
             logger.info(f"CUDA可用，设备数量: {torch.cuda.device_count()}")
-            for i in range(torch.cuda.device_count()):
-                logger.info(f"CUDA设备 {i}: {torch.cuda.get_device_name(i)}")
-                props = torch.cuda.get_device_properties(i)
-                logger.info(f"  显存: {props.total_memory / (1024**3):.2f} GB")
-                logger.info(f"  计算能力: {props.multi_processor_count} 个流处理器")
+            # for i in range(torch.cuda.device_count()):
+            #     logger.info(f"CUDA设备 {i}: {torch.cuda.get_device_name(i)}")
+            #     props = torch.cuda.get_device_properties(i)
+            #     logger.info(f"  显存: {props.total_memory / (1024**3):.2f} GB")
+            #     logger.info(f"  计算能力: {props.multi_processor_count} 个流处理器")
 
             # 如果设备是 CUDA 设备，设置当前设备
             if 'cuda' in device:
@@ -160,15 +160,15 @@ def process_patent_task(patent_file: str, output_dir: str, options: Optional[Dic
                 device = "cpu"
                 logger.info("未找到可用的CUDA设备，使用CPU")
 
-        # 打印设备信息
-        if device.startswith("cuda"):
-            device_id = int(device.split(":")[1])
-            if device_id < torch.cuda.device_count():
-                logger.info(f"使用CUDA设备 {device_id}: {torch.cuda.get_device_name(device_id)}")
-                logger.info(f"设备显存: {torch.cuda.get_device_properties(device_id).total_memory / (1024**3):.2f} GB")
-            else:
-                logger.warning(f"设备ID {device_id} 超出范围，将使用CPU")
-                device = "cpu"
+        # # 打印设备信息
+        # if device.startswith("cuda"):
+        #     device_id = int(device.split(":")[1])
+        #     if device_id < torch.cuda.device_count():
+        #         logger.info(f"使用CUDA设备 {device_id}: {torch.cuda.get_device_name(device_id)}")
+        #         logger.info(f"设备显存: {torch.cuda.get_device_properties(device_id).total_memory / (1024**3):.2f} GB")
+        #     else:
+        #         logger.warning(f"设备ID {device_id} 超出范围，将使用CPU")
+        #         device = "cpu"
 
         # 提取基本文件名（不含扩展名）作为专利ID
         patent_id = Path(patent_file).stem
