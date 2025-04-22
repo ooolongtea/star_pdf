@@ -109,6 +109,10 @@ def init_server(data_dir: str = None,
                 gpu_devices = ["cpu"]
         else:
             gpu_devices = ["cpu"]
+    else:
+        # 确保gpu_devices列表中的每个设备都有正确的"cuda:"前缀
+        gpu_devices = [f"cuda:{device}" if not device.startswith("cuda:") else device 
+                     for device in gpu_devices]
     
     logger.info(f"使用设备: {gpu_devices}")
     
@@ -118,6 +122,9 @@ def init_server(data_dir: str = None,
     
     for device in gpu_devices:
         # 为每个设备创建指定数量的进程
+        # 注意：这里创建的进程池是可以复用的，每个请求会使用现有进程而不是创建新进程
+        # 当一个任务完成后，进程不会被销毁，而是返回到池中等待下一个任务
+        logger.info(f"为设备 {device} 创建进程池（{num_processes}个进程）")
         pool = multiprocessing.Pool(
             processes=num_processes,
             initializer=init_worker_process,
@@ -125,7 +132,7 @@ def init_server(data_dir: str = None,
         )
         process_pools.append(pool)
         pool_device_map[pool] = device
-        logger.info(f"为设备 {device} 创建了 {num_processes} 个进程")
+        logger.info(f"为设备 {device} 创建了 {num_processes} 个进程（进程池将被复用）")
     
     # 创建并注册处理器管理器
     processor_manager = ProcessorManager(process_pools, pool_device_map)
@@ -142,7 +149,7 @@ def main():
     parser.add_argument('--host', type=str, default='0.0.0.0', help='服务器主机名')
     parser.add_argument('--port', type=int, default=8080, help='服务器端口')
     parser.add_argument('--data-dir', type=str, default=None, help='数据目录路径')
-    parser.add_argument('--gpu-devices', type=str, default=None, help='GPU设备列表，以逗号分隔，例如 "cuda:0,cuda:1"')
+    parser.add_argument('--gpu-devices', type=str, default=None, help='GPU设备列表，以逗号分隔，例如 "cuda:0,cuda:1" 或 "0,1"')
     parser.add_argument('--connection-limit', type=int, default=500, help='最大连接数')
     parser.add_argument('--processes', type=int, default=8, help='每个设备使用的进程数')
     parser.add_argument('--debug', action='store_true', help='启用调试模式')
@@ -153,6 +160,9 @@ def main():
     gpu_devices = None
     if args.gpu_devices:
         gpu_devices = args.gpu_devices.split(',')
+        # 检查并修复设备格式
+        gpu_devices = [device.strip() for device in gpu_devices]
+        logger.info(f"命令行指定的GPU设备: {gpu_devices}")
     
     # 初始化服务器核心
     global server_core
