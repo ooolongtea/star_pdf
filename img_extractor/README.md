@@ -248,3 +248,11 @@ python run_api_client.py upload-batch /path/to/patents_dir
 ```
 
 更多API接口详情请参考[API文档](api/README.md)。
+
+
+
+
+新增功能：
+新增aichat页面，用户可以在设置配置自己的api key
+支持连接qwen deepseek等模型，聊天
+设计风格和现有保持一致
