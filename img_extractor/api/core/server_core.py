@@ -52,73 +52,116 @@ class ProcessorManager:
         self.pool_device_map = pool_device_map
         self.current_pool_index = 0
         self.pool_lock = Lock()
-        
+
         # 为每个设备和进程池初始化任务计数
         for device in set(pool_device_map.values()):
             DEVICE_TASK_COUNT[device] = 0
-        
+
         for i, pool in enumerate(process_pools):
             device = pool_device_map[pool]
             POOL_TASK_COUNT[f"{device}_{i}"] = 0
-        
+
         # 记录每个进程池的状态
         self.pool_status = {pool: "ready" for pool in process_pools}
         self.pool_last_used = {pool: 0 for pool in process_pools}
-        
+
         # 启动监控线程
         self.monitor_thread = threading.Thread(target=self._monitor_pools, daemon=True)
         self.monitor_thread.start()
-        
+
         logger.info(f"处理器管理器初始化完成，管理 {len(process_pools)} 个进程池")
 
     def get_next_pool(self) -> tuple:
         """
         获取下一个可用的进程池和对应设备
-        使用负载均衡策略分配
+        使用改进的负载均衡策略分配
 
         返回:
-            (进程池, 设备名称)
+            (进稌池, 设备名称)
         """
         with self.pool_lock:
-            # 找出负载最低的进程池
-            min_tasks = float('inf')
-            selected_pool = None
-            selected_index = 0
-            
+            # 首先按设备分组进程池
+            device_pools = {}
             for i, pool in enumerate(self.process_pools):
                 device = self.pool_device_map[pool]
-                pool_key = f"{device}_{i}"
-                
-                # 获取当前任务数
-                task_count = POOL_TASK_COUNT.get(pool_key, 0)
-                
-                # 如果找到更空闲的进程池，选择它
-                if task_count < min_tasks:
-                    min_tasks = task_count
+                if device not in device_pools:
+                    device_pools[device] = []
+                device_pools[device].append((pool, i))
+
+            # 找出负载最低的设备
+            min_device_load = float('inf')
+            selected_device = None
+
+            for device, pools in device_pools.items():
+                # 获取设备的当前任务数
+                device_load = DEVICE_TASK_COUNT.get(device, 0)
+
+                # 如果是CUDA设备，考虑显存使用情况
+                if device.startswith('cuda:'):
+                    try:
+                        device_id = int(device.split(':')[1])
+                        # 获取设备属性
+                        props = torch.cuda.get_device_properties(device_id)
+                        # 获取当前显存使用情况
+                        reserved = torch.cuda.memory_reserved(device_id) / 1024**2  # MB
+                        allocated = torch.cuda.memory_allocated(device_id) / 1024**2  # MB
+                        free = props.total_memory / 1024**2 - reserved  # MB
+
+                        # 计算综合负载分数（考虑任务数和显存使用情况）
+                        # 负载分数 = 任务数 * 10 + 显存使用率 * 100
+                        memory_usage_ratio = reserved / props.total_memory
+                        device_load_score = device_load * 10 + memory_usage_ratio * 100
+
+                        logger.info(f"设备 {device} 的负载情况: 任务数={device_load}, 显存使用率={memory_usage_ratio:.2f}, 负载分数={device_load_score:.2f}")
+                    except Exception as e:
+                        logger.warning(f"获取设备 {device} 的显存信息时出错: {e}")
+                        # 如果无法获取显存信息，只考虑任务数
+                        device_load_score = device_load * 10
+                else:
+                    # 对于CPU，只考虑任务数
+                    device_load_score = device_load * 10
+
+                # 如果这个设备的负载更低，选择它
+                if device_load_score < min_device_load:
+                    min_device_load = device_load_score
+                    selected_device = device
+
+            # 如果没有找到设备（很少发生），选择第一个设备
+            if selected_device is None:
+                selected_device = list(device_pools.keys())[0]
+
+            # 在选定设备上找出负载最低的进程池
+            min_pool_load = float('inf')
+            selected_pool = None
+            selected_index = 0
+
+            for pool, index in device_pools[selected_device]:
+                pool_key = f"{selected_device}_{index}"
+                pool_load = POOL_TASK_COUNT.get(pool_key, 0)
+
+                if pool_load < min_pool_load:
+                    min_pool_load = pool_load
                     selected_pool = pool
-                    selected_index = i
-            
-            # 如果所有进程池都很忙，回退到轮询方式
+                    selected_index = index
+
+            # 如果没有找到进稌池（很少发生），选择第一个
             if selected_pool is None:
-                selected_pool = self.process_pools[self.current_pool_index]
-                selected_index = self.current_pool_index
-                self.current_pool_index = (self.current_pool_index + 1) % len(self.process_pools)
-            
-            # 更新所选进程池的状态
-            device = self.pool_device_map[selected_pool]
-            pool_key = f"{device}_{selected_index}"
-            
+                selected_pool, selected_index = device_pools[selected_device][0]
+
+            # 更新所选进稌池的状态
+            pool_key = f"{selected_device}_{selected_index}"
+
             # 增加任务计数
-            DEVICE_TASK_COUNT[device] = DEVICE_TASK_COUNT.get(device, 0) + 1
+            DEVICE_TASK_COUNT[selected_device] = DEVICE_TASK_COUNT.get(selected_device, 0) + 1
             POOL_TASK_COUNT[pool_key] = POOL_TASK_COUNT.get(pool_key, 0) + 1
-            
+
             # 更新使用时间
             self.pool_last_used[selected_pool] = time.time()
             self.pool_status[selected_pool] = "busy"
-            
-            logger.info(f"分配任务到进程池 {selected_index} (设备: {device})，当前负载: {POOL_TASK_COUNT[pool_key]}")
-            
-            return selected_pool, device
+
+            logger.info(f"分配任务到进程池 {selected_index} (设备: {selected_device})，当前负载: {POOL_TASK_COUNT[pool_key]}")
+
+            return selected_pool, selected_device
 
     def get_all_devices(self) -> List[str]:
         """
@@ -128,11 +171,11 @@ class ProcessorManager:
             设备名称列表
         """
         return list(set(self.pool_device_map.values()))
-    
+
     def get_pool_status(self) -> Dict[str, Any]:
         """
         获取所有进程池的状态信息
-        
+
         返回:
             包含进程池状态的字典
         """
@@ -140,34 +183,34 @@ class ProcessorManager:
         for i, pool in enumerate(self.process_pools):
             device = self.pool_device_map[pool]
             pool_key = f"{device}_{i}"
-            
+
             status[pool_key] = {
                 "device": device,
                 "status": self.pool_status.get(pool, "unknown"),
                 "tasks": POOL_TASK_COUNT.get(pool_key, 0),
                 "last_used": self.pool_last_used.get(pool, 0)
             }
-        
+
         return status
-    
+
     def _monitor_pools(self):
         """监控进程池状态的后台线程"""
         while True:
             try:
                 # 每10秒更新一次状态
                 time.sleep(10)
-                
+
                 with self.pool_lock:
                     current_time = time.time()
-                    
+
                     # 检查每个进程池
                     for i, pool in enumerate(self.process_pools):
                         device = self.pool_device_map[pool]
                         pool_key = f"{device}_{i}"
-                        
+
                         # 获取当前任务数
                         task_count = POOL_TASK_COUNT.get(pool_key, 0)
-                        
+
                         # 如果没有任务且上次使用时间超过60秒，标记为idle
                         if task_count == 0 and (current_time - self.pool_last_used.get(pool, 0)) > 60:
                             self.pool_status[pool] = "idle"
@@ -175,12 +218,12 @@ class ProcessorManager:
                             self.pool_status[pool] = "busy"
                         else:
                             self.pool_status[pool] = "ready"
-                
+
                 # 周期性清理缓存
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                
+
             except Exception as e:
                 logger.error(f"进程池监控线程出错: {e}")
 
@@ -192,7 +235,7 @@ class ProcessorManager:
                 pool.join()
             except Exception as e:
                 logger.error(f"关闭进程池时出错: {e}")
-        
+
         logger.info("所有处理器进程池已关闭")
 
 class ServerCore:
@@ -259,12 +302,12 @@ class ServerCore:
             包含服务器状态的字典
         """
         uptime = time.time() - self.start_time
-        
+
         # 获取进程池状态
         pool_status = {}
         if self.processor_manager:
             pool_status = self.processor_manager.get_pool_status()
-        
+
         # 计算每个设备的负载
         device_loads = {}
         if self.processor_manager:
@@ -286,7 +329,7 @@ class ServerCore:
 
     def get_active_connections(self) -> int:
         """获取当前活跃连接数
-        
+
         返回:
             当前活跃连接数
         """
@@ -355,7 +398,7 @@ class ServerCore:
         # 默认选项
         if options is None:
             options = {}
-        
+
         # 设置设备选项
         if 'device_id' not in options and device.startswith('cuda:'):
             try:
@@ -382,19 +425,19 @@ class ServerCore:
             return result.get(timeout=600)  # 10分钟超时
         except Exception as e:
             logger.error(f"处理专利时发生错误: {str(e)}")
-            
+
             # 减少任务计数
             with PROCESS_LOCK:
                 # 更新设备任务计数
                 DEVICE_TASK_COUNT[device] = max(0, DEVICE_TASK_COUNT.get(device, 0) - 1)
-                
+
                 # 更新进程池任务计数
                 for i, p in enumerate(self.processor_manager.process_pools):
                     if p == pool:
                         pool_key = f"{device}_{i}"
                         POOL_TASK_COUNT[pool_key] = max(0, POOL_TASK_COUNT.get(pool_key, 0) - 1)
                         break
-            
+
             return {
                 "success": False,
                 "error": str(e),
@@ -404,13 +447,13 @@ class ServerCore:
     def shutdown(self):
         """关闭服务器核心"""
         logger.info("正在关闭服务器核心...")
-        
+
         if self.processor_manager:
             self.processor_manager.shutdown()
-        
+
         if self.executor:
             self.executor.shutdown()
-        
+
         logger.info("服务器核心已关闭")
 
     def _format_uptime(self, seconds: float) -> str:
@@ -426,7 +469,7 @@ class ServerCore:
         days, remainder = divmod(seconds, 86400)
         hours, remainder = divmod(remainder, 3600)
         minutes, seconds = divmod(remainder, 60)
-        
+
         parts = []
         if days > 0:
             parts.append(f"{int(days)}天")
@@ -436,5 +479,5 @@ class ServerCore:
             parts.append(f"{int(minutes)}分钟")
         if seconds > 0 or not parts:
             parts.append(f"{int(seconds)}秒")
-        
+
         return " ".join(parts)

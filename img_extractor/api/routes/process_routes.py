@@ -284,13 +284,6 @@ async def process_batch(request: BatchProcessRequest):
         else:
             results_path = request.output_dir if request.output_dir else os.path.join(request.patent_dir, "results")
 
-        # 在远程模式下，检查服务器上的路径
-        if remote_mode:
-            logger.info(f"远程模式下的输出目录路径: {results_path}")
-
-            # 在远程模式下，始终使用原始路径，不覆盖
-            logger.info(f"远程模式下保持原始路径: {results_path}")
-
         # 构造下载链接
         download_url = f"/api/download_batch_results?result_dir={results_path}"
         download_path = results_path  # 添加下载路径

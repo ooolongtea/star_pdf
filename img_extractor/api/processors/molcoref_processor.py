@@ -69,10 +69,10 @@ class MolCorefProcessor:
                         torch.cuda.set_device(device_id)
                         self._device = torch.device(f"cuda:{device_id}")
 
-                        # 打印设备信息
-                        device_name = torch.cuda.get_device_name(device_id)
-                        device_memory = torch.cuda.get_device_properties(device_id).total_memory / (1024**3)
-                        print(f"成功设置CUDA设备 {device_id}: {device_name} (显存: {device_memory:.2f} GB)")
+                        # # 打印设备信息
+                        # device_name = torch.cuda.get_device_name(device_id)
+                        # device_memory = torch.cuda.get_device_properties(device_id).total_memory / (1024**3)
+                        # # print(f"成功设置CUDA设备 {device_id}: {device_name} (显存: {device_memory:.2f} GB)")
                     else:
                         print(f"警告: 设备ID {device_id} 超出范围 (0-{torch.cuda.device_count()-1})，回退到设备 0")
                         torch.cuda.set_device(0)
@@ -95,40 +95,34 @@ class MolCorefProcessor:
 
         try:
             # 加载分子检测模型
-            print(f"加载分子检测模型，设备: {self.device}")
             try:
                 self.model = MolDetect(
                     self.model_paths["molcoref"],
                     device=self._device,  # 使用初始化好的设备
                     coref=True  # 始终启用共指解析
                 )
-                print(f"  分子检测模型加载成功")
             except Exception as e:
-                print(f"  分子检测模型加载失败: {e}")
+                print(f"  molcoref加载失败: {e}")
                 raise
 
             # 加载分子结构识别模型
-            print(f"加载分子结构识别模型，设备: {self.device}")
             try:
                 self.molscribe = MolScribe(
                     self.model_paths["molscribe"],
                     device=self.device
                 )
-                print(f"  分子结构识别模型加载成功")
             except Exception as e:
-                print(f"  分子结构识别模型加载失败: {e}")
+                print(f"  molscribe加载失败: {e}")
                 raise
 
             # 加载反应模型
-            print(f"加载反应模型，设备: {self.device}")
             try:
                 self.rxnmodel = RxnScribe(
                     self.model_paths["rxn"],
                     device=self._device  # 使用初始化好的设备
                 )
-                print(f"  反应模型加载成功")
             except Exception as e:
-                print(f"  反应模型加载失败: {e}")
+                print(f"  rxn加载失败: {e}")
                 raise
 
             print("模型加载成功！---------------------------")

@@ -318,13 +318,13 @@ async def download_batch_results(result_dir: str = Query(..., description="批�
         # 1. 首先检查原始路径
         if os.path.exists(result_dir) and os.path.isdir(result_dir):
             potential_paths.append(result_dir)
-            logger.info(f"原始路径存在: {result_dir}")
+            # logger.info(f"原始路径存在: {result_dir}")
 
         # 1.1 检查原始路径下的results目录
         results_dir = os.path.join(result_dir, "results")
         if os.path.exists(results_dir) and os.path.isdir(results_dir):
             potential_paths.append(results_dir)
-            logger.info(f"原始路径下的results目录存在: {results_dir}")
+            # logger.info(f"原始路径下的results目录存在: {results_dir}")
 
         # 2. 如果是远程路径，尝试在服务器数据目录中查找相应的目录
         if server_core and hasattr(server_core, 'data_dir'):
