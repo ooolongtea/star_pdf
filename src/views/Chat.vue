@@ -1,11 +1,13 @@
 <template>
-  <div class="h-screen flex flex-col">
+  <div class="h-screen flex flex-col bg-white">
     <div class="flex-1 flex overflow-hidden">
       <!-- 侧边栏 -->
-      <div class="w-64 flex-shrink-0 hidden md:block">
+      <div
+        class="w-1/4 max-w-xs flex-shrink-0 hidden md:block border-r border-gray-200 overflow-hidden transition-all duration-300 ease-in-out"
+      >
         <ChatSidebar @new-chat="createNewChat" />
       </div>
-      
+
       <!-- 移动端侧边栏切换按钮 -->
       <div class="md:hidden absolute top-4 left-4 z-10">
         <button
@@ -36,27 +38,30 @@
           </svg>
         </button>
       </div>
-      
+
       <!-- 移动端侧边栏 -->
       <div
         v-if="showSidebar"
         class="md:hidden fixed inset-0 z-20 flex"
         @click="showSidebar = false"
       >
-        <div class="fixed inset-0 bg-gray-600 bg-opacity-75" aria-hidden="true"></div>
-        
         <div
-          class="relative flex-1 flex flex-col max-w-xs w-full bg-gray-800"
+          class="fixed inset-0 bg-gray-600 bg-opacity-75 backdrop-blur-sm transition-opacity duration-300"
+          aria-hidden="true"
+        ></div>
+
+        <div
+          class="relative flex-1 flex flex-col max-w-xs w-full bg-white border-r border-gray-200 overflow-hidden transition-transform duration-300 ease-in-out"
           @click.stop
         >
           <div class="absolute top-0 right-0 -mr-12 pt-2">
             <button
               @click="showSidebar = false"
-              class="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+              class="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               <span class="sr-only">关闭侧边栏</span>
               <svg
-                class="h-6 w-6 text-white"
+                class="h-6 w-6 text-gray-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -71,17 +76,19 @@
               </svg>
             </button>
           </div>
-          
+
           <ChatSidebar @new-chat="createNewChat" />
         </div>
-        
+
         <div class="flex-shrink-0 w-14" aria-hidden="true">
           <!-- 强制侧边栏占用空间 -->
         </div>
       </div>
-      
+
       <!-- 主聊天界面 -->
-      <div class="flex-1 flex flex-col overflow-hidden">
+      <div
+        class="flex-1 flex flex-col overflow-hidden bg-white transition-all duration-300 ease-in-out"
+      >
         <ChatInterface @new-chat="createNewChat" />
       </div>
     </div>
@@ -89,45 +96,71 @@
 </template>
 
 <script>
-import { ref } from 'vue';
-import { useStore } from 'vuex';
-import ChatSidebar from '../components/chat/ChatSidebar.vue';
-import ChatInterface from '../components/chat/ChatInterface.vue';
+import { ref } from "vue";
+import { useStore } from "vuex";
+import ChatSidebar from "../components/chat/ChatSidebar.vue";
+import ChatInterface from "../components/chat/ChatInterface.vue";
 
 export default {
-  name: 'ChatView',
+  name: "ChatView",
   components: {
     ChatSidebar,
-    ChatInterface
+    ChatInterface,
   },
   setup() {
     const store = useStore();
     const showSidebar = ref(false);
-    
+
     // 创建新对话
-    const createNewChat = async (modelName = 'qwen') => {
+    const createNewChat = async (modelName = "qwen") => {
       try {
         // 清除当前对话
-        store.dispatch('chat/clearCurrentConversation');
-        
+        store.dispatch("chat/clearCurrentConversation");
+
         // 创建新对话
-        await store.dispatch('chat/createConversation', {
-          title: '新对话',
-          model_name: modelName
+        await store.dispatch("chat/createConversation", {
+          title: "新对话",
+          model_name: modelName,
         });
-        
+
         // 关闭移动端侧边栏
         showSidebar.value = false;
       } catch (error) {
-        console.error('创建新对话失败:', error);
-        store.dispatch('setError', '创建新对话失败，请确保您已配置相应模型的API密钥');
+        console.error("创建新对话失败:", error);
+        store.dispatch(
+          "setError",
+          "创建新对话失败，请确保您已配置相应模型的API密钥"
+        );
       }
     };
-    
+
     return {
       showSidebar,
-      createNewChat
+      createNewChat,
     };
-  }
+  },
 };
 </script>
+
+<style scoped>
+/* 添加现代化过渡效果 */
+.shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* 添加动画效果 */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* 定义字体 */
+.h-screen {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #333;
+}
+</style>

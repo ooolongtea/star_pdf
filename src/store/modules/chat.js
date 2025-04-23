@@ -76,9 +76,9 @@ const actions = {
     try {
       commit('SET_LOADING', true);
       commit('CLEAR_ERROR');
-      
+
       const response = await axios.get('/api/chat/conversations');
-      
+
       if (response.data.success) {
         commit('SET_CONVERSATIONS', response.data.data.conversations);
       }
@@ -89,18 +89,18 @@ const actions = {
       commit('SET_LOADING', false);
     }
   },
-  
+
   // 创建新对话
   async createConversation({ commit }, { title, model_name }) {
     try {
       commit('SET_LOADING', true);
       commit('CLEAR_ERROR');
-      
+
       const response = await axios.post('/api/chat/conversations', {
         title: title || '新对话',
         model_name
       });
-      
+
       if (response.data.success) {
         const conversation = response.data.data.conversation;
         commit('ADD_CONVERSATION', conversation);
@@ -116,15 +116,15 @@ const actions = {
       commit('SET_LOADING', false);
     }
   },
-  
+
   // 获取特定对话及其消息
   async fetchConversation({ commit }, id) {
     try {
       commit('SET_LOADING', true);
       commit('CLEAR_ERROR');
-      
+
       const response = await axios.get(`/api/chat/conversations/${id}`);
-      
+
       if (response.data.success) {
         commit('SET_CURRENT_CONVERSATION', response.data.data.conversation);
         commit('SET_MESSAGES', response.data.data.messages);
@@ -136,15 +136,15 @@ const actions = {
       commit('SET_LOADING', false);
     }
   },
-  
+
   // 更新对话标题
   async updateConversationTitle({ commit }, { id, title }) {
     try {
       commit('SET_LOADING', true);
       commit('CLEAR_ERROR');
-      
+
       const response = await axios.put(`/api/chat/conversations/${id}`, { title });
-      
+
       if (response.data.success) {
         commit('UPDATE_CONVERSATION', { id, title });
       }
@@ -155,15 +155,15 @@ const actions = {
       commit('SET_LOADING', false);
     }
   },
-  
+
   // 删除对话
   async deleteConversation({ commit }, id) {
     try {
       commit('SET_LOADING', true);
       commit('CLEAR_ERROR');
-      
+
       const response = await axios.delete(`/api/chat/conversations/${id}`);
-      
+
       if (response.data.success) {
         commit('REMOVE_CONVERSATION', id);
       }
@@ -174,14 +174,14 @@ const actions = {
       commit('SET_LOADING', false);
     }
   },
-  
+
   // 发送消息
   async sendMessage({ commit, state }, { conversationId, message }) {
     try {
       if (!state.currentConversation) {
         throw new Error('没有选择对话');
       }
-      
+
       // 立即添加用户消息到UI
       const userMessage = {
         id: 'temp-' + Date.now(),
@@ -191,7 +191,7 @@ const actions = {
         created_at: new Date().toISOString()
       };
       commit('ADD_MESSAGE', userMessage);
-      
+
       // 添加临时的AI消息（用于显示加载状态）
       const tempAiMessage = {
         id: 'temp-ai-' + Date.now(),
@@ -202,28 +202,28 @@ const actions = {
         created_at: new Date().toISOString()
       };
       commit('ADD_MESSAGE', tempAiMessage);
-      
+
       // 发送请求到服务器
       const response = await axios.post(`/api/chat/conversations/${conversationId}/messages`, {
         message
       });
-      
+
       if (response.data.success) {
         // 移除临时AI消息
         commit('SET_MESSAGES', state.messages.filter(msg => msg.id !== tempAiMessage.id));
-        
+
         // 添加真实的AI回复
         commit('ADD_MESSAGE', response.data.data.message);
-        
+
         return response.data.data.message;
       }
     } catch (error) {
       console.error('发送消息失败:', error);
-      
+
       // 移除临时AI消息，添加错误消息
       if (state.messages.some(msg => msg.id === 'temp-ai-' + Date.now())) {
         commit('SET_MESSAGES', state.messages.filter(msg => !msg.isLoading));
-        
+
         const errorMessage = {
           id: 'error-' + Date.now(),
           conversation_id: conversationId,
@@ -234,12 +234,12 @@ const actions = {
         };
         commit('ADD_MESSAGE', errorMessage);
       }
-      
+
       commit('SET_ERROR', '发送消息失败，请稍后重试');
       throw error;
     }
   },
-  
+
   // 清除当前对话
   clearCurrentConversation({ commit }) {
     commit('SET_CURRENT_CONVERSATION', null);
