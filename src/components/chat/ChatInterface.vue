@@ -82,7 +82,7 @@
 
     <!-- 输入区域（固定在底部） -->
     <div
-      class="p-4 border-t bg-white shadow-md fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out z-10 mx-2 mb-2 md:absolute md:mx-0 md:mb-0"
+      class="p-4 border-t bg-white shadow-md fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out z-10 md:absolute"
     >
       <form @submit.prevent="sendMessage" class="flex items-end relative">
         <!-- 模型指示器 -->

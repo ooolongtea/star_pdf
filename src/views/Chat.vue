@@ -3,9 +3,46 @@
     <div class="flex-1 flex overflow-hidden">
       <!-- 侧边栏 -->
       <div
-        class="w-1/4 max-w-xs flex-shrink-0 hidden md:block border-r border-gray-200 overflow-hidden transition-all duration-300 ease-in-out"
+        :class="[
+          'flex-shrink-0 hidden md:block border-r border-gray-200 overflow-hidden transition-all duration-300 ease-in-out',
+          sidebarCollapsed ? 'w-16' : 'w-1/4 max-w-xs',
+        ]"
       >
-        <ChatSidebar @new-chat="createNewChat" />
+        <div class="relative h-full">
+          <ChatSidebar
+            @new-chat="createNewChat"
+            :collapsed="sidebarCollapsed"
+          />
+
+          <!-- 收起/展开按钮 -->
+          <button
+            @click="sidebarCollapsed = !sidebarCollapsed"
+            class="absolute bottom-4 right-2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 focus:outline-none transition-all duration-200"
+          >
+            <svg
+              class="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                v-if="!sidebarCollapsed"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+              ></path>
+              <path
+                v-else
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 5l7 7-7 7M5 5l7 7-7 7"
+              ></path>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- 移动端侧边栏切换按钮 -->
@@ -110,6 +147,7 @@ export default {
   setup() {
     const store = useStore();
     const showSidebar = ref(false);
+    const sidebarCollapsed = ref(false);
 
     // 创建新对话
     const createNewChat = async (modelName = "qwen") => {
@@ -136,6 +174,7 @@ export default {
 
     return {
       showSidebar,
+      sidebarCollapsed,
       createNewChat,
     };
   },

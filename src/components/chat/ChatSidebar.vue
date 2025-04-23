@@ -1,5 +1,8 @@
 <template>
-  <div class="h-full flex flex-col bg-white text-gray-800">
+  <div
+    class="h-full flex flex-col bg-white text-gray-800"
+    :class="{ collapsed: collapsed }"
+  >
     <!-- 新建对话按钮 -->
     <div class="p-4 border-b border-gray-200">
       <button
@@ -7,7 +10,8 @@
         class="w-full flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm"
       >
         <svg
-          class="h-5 w-5 mr-2"
+          class="h-5 w-5"
+          :class="{ 'mr-2': !collapsed }"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -20,12 +24,12 @@
             d="M12 6v6m0 0v6m0-6h6m-6 0H6"
           ></path>
         </svg>
-        新建对话
+        <span v-if="!collapsed">新建对话</span>
       </button>
     </div>
 
     <!-- 模型选择器 -->
-    <div class="px-4 mb-4 pt-4">
+    <div class="px-4 mb-4 pt-4" v-if="!collapsed">
       <div class="flex items-center justify-between">
         <div class="flex-1">
           <ModelSelector
@@ -110,7 +114,8 @@
         >
           <div class="flex items-center overflow-hidden">
             <svg
-              class="h-5 w-5 mr-2 flex-shrink-0 text-gray-500"
+              class="h-5 w-5 flex-shrink-0 text-gray-500"
+              :class="{ 'mr-2': !collapsed }"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -123,7 +128,9 @@
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               ></path>
             </svg>
-            <span class="truncate">{{ conversation.title }}</span>
+            <span class="truncate" v-if="!collapsed">{{
+              conversation.title
+            }}</span>
           </div>
 
           <div
@@ -285,6 +292,12 @@ export default {
     ModelSelector,
     ModelSelectorPanel,
   },
+  props: {
+    collapsed: {
+      type: Boolean,
+      default: false,
+    },
+  },
   emits: ["new-chat"],
   setup(props, { emit }) {
     const store = useStore();
@@ -391,5 +404,29 @@ export default {
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-400;
+}
+/* 收起状态样式 */
+.collapsed .overflow-y-auto::-webkit-scrollbar {
+  width: 0;
+}
+
+.collapsed button {
+  padding: 0.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.collapsed .p-4 {
+  padding: 0.5rem;
+}
+
+.collapsed .px-4 {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.collapsed .space-y-1 {
+  margin-top: 0.5rem;
 }
 </style>

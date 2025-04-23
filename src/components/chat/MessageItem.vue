@@ -40,7 +40,7 @@
         <!-- 用户头像（右侧） -->
         <div
           v-if="message.role === 'user'"
-          class="absolute -right-10 top-0 flex-shrink-0"
+          class="absolute -right-12 top-0 flex-shrink-0"
         >
           <div
             class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
