@@ -1,16 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middlewares/auth.middleware');
-
-// 这里我们可以添加用户相关的路由
-// 目前只添加一个获取用户信息的路由作为示例
+const apiKeyController = require('../controllers/apiKey.controller');
 
 // 获取用户信息
 router.get('/profile', authMiddleware.verifyToken, async (req, res) => {
   try {
     // 用户信息已经在auth中间件中添加到req对象
     const user = req.user;
-    
+
     // 返回用户信息（不包含敏感数据）
     res.status(200).json({
       success: true,
@@ -35,26 +33,17 @@ router.get('/profile', authMiddleware.verifyToken, async (req, res) => {
 router.put('/profile', authMiddleware.verifyToken, async (req, res) => {
   try {
     const { fullName } = req.body;
-    const userId = req.user.id;
-    
-    // 创建用户模型实例
-    const User = require('../models/user.model');
-    const userModel = new User(req.db);
-    
+
     // 更新用户信息
-    const success = await userModel.update(userId, { fullName });
-    
-    if (success) {
-      res.status(200).json({
-        success: true,
-        message: '用户信息已更新'
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: '更新用户信息失败'
-      });
-    }
+    await req.db.execute(
+      'UPDATE users SET full_name = ?, updated_at = NOW() WHERE id = ?',
+      [fullName || null, req.user.id]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: '用户信息已更新'
+    });
   } catch (error) {
     console.error('更新用户信息错误:', error);
     res.status(500).json({
@@ -65,56 +54,57 @@ router.put('/profile', authMiddleware.verifyToken, async (req, res) => {
   }
 });
 
-// 更新密码
+// 更新用户密码
 router.put('/password', authMiddleware.verifyToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    const userId = req.user.id;
-    
-    // 验证参数
+
+    // 验证必填字段
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
-        message: '当前密码和新密码都是必需的'
+        message: '请提供当前密码和新密码'
       });
     }
-    
-    // 创建用户模型实例
-    const User = require('../models/user.model');
-    const userModel = new User(req.db);
-    
-    // 获取用户信息
-    const user = await userModel.findById(userId);
-    if (!user) {
+
+    // 获取用户当前密码
+    const [rows] = await req.db.execute(
+      'SELECT password FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    if (rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: '用户不存在'
       });
     }
-    
+
     // 验证当前密码
-    const isPasswordValid = await userModel.verifyPassword(currentPassword, user.password);
+    const bcrypt = require('bcryptjs');
+    const isPasswordValid = await bcrypt.compare(currentPassword, rows[0].password);
+
     if (!isPasswordValid) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
-        message: '当前密码不正确'
+        message: '当前密码错误'
       });
     }
-    
+
+    // 加密新密码
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
     // 更新密码
-    const success = await userModel.update(userId, { password: newPassword });
-    
-    if (success) {
-      res.status(200).json({
-        success: true,
-        message: '密码已更新'
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: '更新密码失败'
-      });
-    }
+    await req.db.execute(
+      'UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?',
+      [hashedPassword, req.user.id]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: '密码已更新'
+    });
   } catch (error) {
     console.error('更新密码错误:', error);
     res.status(500).json({
@@ -124,5 +114,21 @@ router.put('/password', authMiddleware.verifyToken, async (req, res) => {
     });
   }
 });
+
+// API密钥相关路由
+// 获取所有API密钥
+router.get('/api-keys', authMiddleware.verifyToken, apiKeyController.getApiKeys);
+
+// 创建API密钥
+router.post('/api-keys', authMiddleware.verifyToken, apiKeyController.createApiKey);
+
+// 更新API密钥
+router.put('/api-keys/:id', authMiddleware.verifyToken, apiKeyController.updateApiKey);
+
+// 删除API密钥
+router.delete('/api-keys/:id', authMiddleware.verifyToken, apiKeyController.deleteApiKey);
+
+// 获取特定模型的API密钥
+router.get('/api-keys/model/:model_name', authMiddleware.verifyToken, apiKeyController.getApiKeyByModel);
 
 module.exports = router;

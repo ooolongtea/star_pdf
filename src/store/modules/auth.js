@@ -42,7 +42,7 @@ const actions = {
     try {
       dispatch('setLoading', true, { root: true });
       const response = await axios.post('/api/auth/register', userData);
-      
+
       if (response.data.success) {
         const { token, expiresAt } = response.data.data;
         commit('SET_TOKEN', { token, expiry: expiresAt });
@@ -52,7 +52,7 @@ const actions = {
           message: '注册成功！欢迎使用专利化学式提取系统。'
         }, { root: true });
       }
-      
+
       return response.data;
     } catch (error) {
       const message = error.response?.data?.message || '注册失败，请稍后重试';
@@ -62,13 +62,13 @@ const actions = {
       dispatch('setLoading', false, { root: true });
     }
   },
-  
+
   // 登录
   async login({ commit, dispatch }, credentials) {
     try {
       dispatch('setLoading', true, { root: true });
       const response = await axios.post('/api/auth/login', credentials);
-      
+
       if (response.data.success) {
         const { token, expiresAt } = response.data.data;
         commit('SET_TOKEN', { token, expiry: expiresAt });
@@ -78,26 +78,26 @@ const actions = {
           message: '登录成功！'
         }, { root: true });
       }
-      
+
       return response.data;
     } catch (error) {
-      const message = error.response?.data?.message || '登录失败，请检查您的凭据';
+      const message = error.response?.data?.message || '登录失败，请检查您的用户名和密码';
       dispatch('setError', message, { root: true });
       throw error;
     } finally {
       dispatch('setLoading', false, { root: true });
     }
   },
-  
+
   // 退出登录
   async logout({ commit, dispatch, state }) {
     try {
       dispatch('setLoading', true, { root: true });
-      
+
       if (state.token) {
         await axios.post('/api/auth/logout');
       }
-      
+
       commit('CLEAR_AUTH');
       dispatch('setNotification', {
         type: 'success',
@@ -111,24 +111,24 @@ const actions = {
       dispatch('setLoading', false, { root: true });
     }
   },
-  
+
   // 验证令牌
   async verifyToken({ commit, dispatch }, token) {
     try {
       dispatch('setLoading', true, { root: true });
       const response = await axios.get('/api/auth/verify-token');
-      
+
       if (response.data.success) {
         commit('SET_USER', response.data.data.user);
-        commit('SET_TOKEN', { 
-          token, 
-          expiry: response.data.data.expiresAt 
+        commit('SET_TOKEN', {
+          token,
+          expiry: response.data.data.expiresAt
         });
       } else {
         // 令牌无效，清除认证状态
         commit('CLEAR_AUTH');
       }
-      
+
       return response.data.success;
     } catch (error) {
       console.error('验证令牌错误:', error);
@@ -139,20 +139,20 @@ const actions = {
       dispatch('setLoading', false, { root: true });
     }
   },
-  
+
   // 发送验证码
   async sendVerificationCode({ dispatch }, email) {
     try {
       dispatch('setLoading', true, { root: true });
       const response = await axios.post('/api/auth/verification-code', { email });
-      
+
       if (response.data.success) {
         dispatch('setNotification', {
           type: 'success',
           message: '验证码已发送到您的邮箱'
         }, { root: true });
       }
-      
+
       return response.data;
     } catch (error) {
       const message = error.response?.data?.message || '发送验证码失败，请稍后重试';
@@ -162,17 +162,17 @@ const actions = {
       dispatch('setLoading', false, { root: true });
     }
   },
-  
+
   // 获取当前用户信息
   async getCurrentUser({ commit, dispatch }) {
     try {
       dispatch('setLoading', true, { root: true });
       const response = await axios.get('/api/auth/me');
-      
+
       if (response.data.success) {
         commit('SET_USER', response.data.data.user);
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('获取用户信息错误:', error);
@@ -180,6 +180,57 @@ const actions = {
         // 未授权，清除认证状态
         commit('CLEAR_AUTH');
       }
+      throw error;
+    } finally {
+      dispatch('setLoading', false, { root: true });
+    }
+  },
+
+  // 更新用户信息
+  async updateProfile({ commit, dispatch, state }, userData) {
+    try {
+      dispatch('setLoading', true, { root: true });
+      const response = await axios.put('/api/users/profile', userData);
+
+      if (response.data.success) {
+        // 更新本地用户信息
+        const currentUser = { ...state.user };
+        const updatedUser = { ...currentUser, ...userData };
+        commit('SET_USER', updatedUser);
+
+        dispatch('setNotification', {
+          type: 'success',
+          message: '用户信息已更新'
+        }, { root: true });
+      }
+
+      return response.data;
+    } catch (error) {
+      const message = error.response?.data?.message || '更新用户信息失败，请稍后重试';
+      dispatch('setError', message, { root: true });
+      throw error;
+    } finally {
+      dispatch('setLoading', false, { root: true });
+    }
+  },
+
+  // 更新密码
+  async updatePassword({ dispatch }, passwordData) {
+    try {
+      dispatch('setLoading', true, { root: true });
+      const response = await axios.put('/api/users/password', passwordData);
+
+      if (response.data.success) {
+        dispatch('setNotification', {
+          type: 'success',
+          message: '密码已成功更新'
+        }, { root: true });
+      }
+
+      return response.data;
+    } catch (error) {
+      const message = error.response?.data?.message || '更新密码失败，请稍后重试';
+      dispatch('setError', message, { root: true });
       throw error;
     } finally {
       dispatch('setLoading', false, { root: true });

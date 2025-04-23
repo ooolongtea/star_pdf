@@ -39,31 +39,9 @@
               name="password"
               type="password"
               required
-              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
               placeholder="密码"
             />
-          </div>
-          <div>
-            <div class="flex items-center justify-between mt-2">
-              <label for="verification-code" class="sr-only">验证码</label>
-              <input
-                id="verification-code"
-                v-model="form.verificationCode"
-                name="verification-code"
-                type="text"
-                required
-                class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="验证码"
-              />
-              <button
-                type="button"
-                @click="sendVerificationCode"
-                :disabled="cooldown > 0"
-                class="ml-2 whitespace-nowrap inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {{ cooldown > 0 ? `${cooldown}秒后重试` : "获取验证码" }}
-              </button>
-            </div>
           </div>
         </div>
 
@@ -140,7 +118,7 @@
 </template>
 
 <script>
-import { ref, computed, reactive } from "vue";
+import { computed, reactive } from "vue";
 import { useStore } from "vuex";
 import { useRouter, useRoute } from "vue-router";
 
@@ -152,35 +130,12 @@ export default {
     const route = useRoute();
 
     const loading = computed(() => store.getters.isLoading);
-    const cooldown = ref(0);
 
     const form = reactive({
       username: "",
       password: "",
-      verificationCode: "",
       rememberMe: false,
     });
-
-    // 发送验证码
-    const sendVerificationCode = async () => {
-      if (cooldown.value > 0) return;
-
-      try {
-        // 获取用户信息
-        await store.dispatch("auth/sendVerificationCode", form.username);
-
-        // 设置冷却时间
-        cooldown.value = 60;
-        const timer = setInterval(() => {
-          cooldown.value--;
-          if (cooldown.value <= 0) {
-            clearInterval(timer);
-          }
-        }, 1000);
-      } catch (error) {
-        console.error("发送验证码失败:", error);
-      }
-    };
 
     // 提交表单
     const handleSubmit = async () => {
@@ -188,7 +143,6 @@ export default {
         await store.dispatch("auth/login", {
           username: form.username,
           password: form.password,
-          verificationCode: form.verificationCode,
         });
 
         // 登录成功后重定向
@@ -202,8 +156,6 @@ export default {
     return {
       form,
       loading,
-      cooldown,
-      sendVerificationCode,
       handleSubmit,
     };
   },

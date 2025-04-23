@@ -99,13 +99,13 @@ exports.register = async (req, res) => {
 // 用户登录
 exports.login = async (req, res) => {
   try {
-    const { username, password, verificationCode } = req.body;
+    const { username, password } = req.body;
 
     // 验证必填字段
-    if (!username || !password || !verificationCode) {
+    if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: '请提供所有必填字段'
+        message: '请提供用户名和密码'
       });
     }
 
@@ -117,15 +117,6 @@ exports.login = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: '用户名或密码错误'
-      });
-    }
-
-    // 验证验证码
-    const isCodeValid = await userModel.verifyCode(user.email, verificationCode);
-    if (!isCodeValid) {
-      return res.status(400).json({
-        success: false,
-        message: '验证码无效或已过期'
       });
     }
 
