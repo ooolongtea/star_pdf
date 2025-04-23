@@ -11,10 +11,10 @@ class Conversation {
         [userId, title || '新对话', modelName]
       );
 
-      return { 
-        id: result.insertId, 
-        user_id: userId, 
-        title, 
+      return {
+        id: result.insertId,
+        user_id: userId,
+        title,
         model_name: modelName,
         created_at: new Date()
       };
@@ -83,6 +83,40 @@ class Conversation {
         [id]
       );
     } catch (error) {
+      throw error;
+    }
+  }
+
+  // 更新对话模型
+  async updateModel(id, userId, modelName) {
+    try {
+      console.log('开始更新对话模型:', { id, userId, modelName });
+
+      // 首先检查对话是否存在
+      const [rows] = await this.db.execute(
+        'SELECT * FROM conversations WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      console.log('检查对话存在结果:', rows.length > 0 ? '存在' : '不存在');
+
+      if (rows.length === 0) {
+        console.log('对话不存在或无权访问');
+        return false;
+      }
+
+      // 更新模型
+      const [result] = await this.db.execute(
+        'UPDATE conversations SET model_name = ? WHERE id = ? AND user_id = ?',
+        [modelName, id, userId]
+      );
+
+      const success = result.affectedRows > 0;
+      console.log('更新模型结果:', success ? '成功' : '失败', '影响行数:', result.affectedRows);
+
+      return success;
+    } catch (error) {
+      console.error('更新对话模型错误:', error);
       throw error;
     }
   }

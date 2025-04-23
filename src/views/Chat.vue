@@ -129,6 +129,13 @@
         <ChatInterface @new-chat="createNewChat" />
       </div>
     </div>
+
+    <!-- 模型选择弹窗 -->
+    <ModelSelectionModal
+      v-if="showModelSelectionModal"
+      @select="createNewChatWithModel"
+      @cancel="cancelCreateNewChat"
+    />
   </div>
 </template>
 
@@ -137,29 +144,99 @@ import { ref } from "vue";
 import { useStore } from "vuex";
 import ChatSidebar from "../components/chat/ChatSidebar.vue";
 import ChatInterface from "../components/chat/ChatInterface.vue";
+import ModelSelectionModal from "../components/chat/ModelSelectionModal.vue";
 
 export default {
   name: "ChatView",
   components: {
     ChatSidebar,
     ChatInterface,
+    ModelSelectionModal,
   },
   setup() {
     const store = useStore();
     const showSidebar = ref(false);
     const sidebarCollapsed = ref(false);
+    const showModelSelectionModal = ref(false);
+
+    // 当前选择的模型
+    const currentSelectedModel = ref("qwen:qwen-max");
+
+    // 监听侧边栏模型变化
+    const onModelChange = (model) => {
+      console.log("模型变更：", model);
+
+      // 更新当前选中的模型
+      currentSelectedModel.value = model;
+
+      // 如果当前有对话但还没有发送消息，更新对话的模型
+      const currentConversation = store.getters["chat/getCurrentConversation"];
+      const messages = store.getters["chat/getMessages"];
+
+      console.log("当前对话：", currentConversation);
+      console.log("消息数量：", messages.length);
+
+      if (currentConversation && messages.length === 0) {
+        console.log("将更新对话模型：", currentConversation.id, model);
+
+        // 添加调试信息
+        console.log("当前对话对象:", JSON.stringify(currentConversation));
+
+        // 更新当前对话的模型
+        store
+          .dispatch("chat/updateConversationModel", {
+            id: currentConversation.id,
+            model_name: model,
+          })
+          .then(() => {
+            console.log("模型更新成功！");
+
+            // 强制刷新当前对话
+            return store.dispatch(
+              "chat/fetchConversation",
+              currentConversation.id
+            );
+          })
+          .then(() => {
+            console.log("刷新当前对话成功！");
+            console.log(
+              "更新后的对话对象:",
+              JSON.stringify(store.getters["chat/getCurrentConversation"])
+            );
+          })
+          .catch((error) => {
+            console.error("模型更新失败：", error);
+          });
+      } else {
+        console.log("不更新模型，因为没有当前对话或已有消息");
+      }
+    };
 
     // 创建新对话
-    const createNewChat = async (modelName = "qwen") => {
+    const createNewChat = () => {
+      // 显示模型选择弹窗
+      showModelSelectionModal.value = true;
+    };
+
+    // 模型选择完成后创建新对话
+    const createNewChatWithModel = async (model) => {
       try {
+        console.log("使用模型创建新对话:", model);
+
+        // 更新当前选择的模型
+        currentSelectedModel.value = model;
+
         // 清除当前对话
         store.dispatch("chat/clearCurrentConversation");
 
-        // 创建新对话
+        // 创建新对话，使用选择的模型
         await store.dispatch("chat/createConversation", {
           title: "新对话",
-          model_name: modelName,
+          model_name: model,
         });
+
+        // 关闭模型选择弹窗
+        showModelSelectionModal.value = false;
 
         // 关闭移动端侧边栏
         showSidebar.value = false;
@@ -172,10 +249,20 @@ export default {
       }
     };
 
+    // 取消创建新对话
+    const cancelCreateNewChat = () => {
+      showModelSelectionModal.value = false;
+    };
+
     return {
       showSidebar,
       sidebarCollapsed,
+      showModelSelectionModal,
+      currentSelectedModel,
       createNewChat,
+      createNewChatWithModel,
+      cancelCreateNewChat,
+      onModelChange,
     };
   },
 };

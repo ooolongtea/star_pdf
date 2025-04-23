@@ -94,38 +94,54 @@ exports.getConversation = async (req, res) => {
   }
 };
 
-// 更新对话标题
+// 更新对话标题或模型
 exports.updateConversation = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title } = req.body;
+    const { title, model_name } = req.body;
 
-    if (!title) {
+    console.log('收到更新对话请求:', { id, title, model_name });
+
+    if (!title && !model_name) {
+      console.log('缺少必要参数');
       return res.status(400).json({
         success: false,
-        message: '请提供对话标题'
+        message: '请提供对话标题或模型名称'
       });
     }
 
     const conversationModel = new Conversation(req.db);
-    const success = await conversationModel.updateTitle(id, req.user.id, title);
+    let success = false;
+
+    if (title) {
+      console.log('更新对话标题:', title);
+      success = await conversationModel.updateTitle(id, req.user.id, title);
+    }
+
+    if (model_name) {
+      console.log('更新对话模型:', model_name);
+      success = await conversationModel.updateModel(id, req.user.id, model_name);
+      console.log('更新模型结果:', success ? '成功' : '失败');
+    }
 
     if (!success) {
+      console.log('对话不存在或无权访问');
       return res.status(404).json({
         success: false,
         message: '对话不存在或无权访问'
       });
     }
 
+    console.log('更新对话成功');
     res.status(200).json({
       success: true,
-      message: '对话标题已更新'
+      message: title ? '对话标题已更新' : '对话模型已更新'
     });
   } catch (error) {
-    console.error('更新对话标题错误:', error);
+    console.error('更新对话错误:', error);
     res.status(500).json({
       success: false,
-      message: '更新对话标题失败',
+      message: '更新对话失败',
       error: error.message
     });
   }
@@ -197,21 +213,29 @@ exports.sendMessage = async (req, res) => {
     // 获取对话历史
     const messages = await messageModel.getByConversationId(id);
 
+    // 处理新格式的模型名称（provider:model）
+    let providerId = conversation.model_name;
+    let modelId = null;
+
+    if (conversation.model_name.includes(':')) {
+      [providerId, modelId] = conversation.model_name.split(':');
+    }
+
     // 获取API密钥
     const [apiKeyRows] = await req.db.execute(
       'SELECT api_key, api_base_url FROM api_keys WHERE user_id = ? AND model_name = ? AND is_active = 1',
-      [req.user.id, conversation.model_name]
+      [req.user.id, providerId]
     );
 
     if (apiKeyRows.length === 0) {
       return res.status(400).json({
         success: false,
-        message: `未找到${conversation.model_name}模型的API密钥，请在API密钥管理中添加`
+        message: `未找到${providerId}模型的API密钥，请在API密钥管理中添加`
       });
     }
 
     const apiKey = apiKeyRows[0].api_key;
-    const apiBaseUrl = apiKeyRows[0].api_base_url || getDefaultApiBaseUrl(conversation.model_name);
+    const apiBaseUrl = apiKeyRows[0].api_base_url || getDefaultApiBaseUrl(providerId);
 
     // 准备发送给AI模型的消息历史
     const messageHistory = messages.map(msg => ({
@@ -245,39 +269,46 @@ exports.sendMessage = async (req, res) => {
 };
 
 // 根据模型名称获取默认API基础URL
-function getDefaultApiBaseUrl(modelName) {
+function getDefaultApiBaseUrl(providerId) {
   const baseUrls = {
-    'qwen': 'https://dashscope.aliyuncs.com/v1',
-    'deepseek': 'https://api.deepseek.com/v1',
+    'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'deepseek': 'https://api.deepseek.com',
     'baichuan': 'https://api.baichuan-ai.com/v1',
     'chatglm': 'https://open.bigmodel.cn/api/paas/v3'
   };
 
-  return baseUrls[modelName] || 'https://api.openai.com/v1';
+  return baseUrls[providerId] || 'https://api.openai.com/v1';
 }
 
 // 调用不同的AI模型API
 async function callAiModel(modelName, messages, apiKey, apiBaseUrl) {
   try {
     let response;
-    
-    switch (modelName) {
+    let providerId = modelName;
+    let modelId = null;
+
+    // 处理新格式的模型名称（provider:model）
+    if (modelName.includes(':')) {
+      [providerId, modelId] = modelName.split(':');
+    }
+
+    switch (providerId) {
       case 'qwen':
-        response = await callQwenApi(messages, apiKey, apiBaseUrl);
+        response = await callQwenApi(messages, apiKey, apiBaseUrl, modelId);
         break;
       case 'deepseek':
-        response = await callDeepseekApi(messages, apiKey, apiBaseUrl);
+        response = await callDeepseekApi(messages, apiKey, apiBaseUrl, modelId);
         break;
       case 'baichuan':
-        response = await callBaichuanApi(messages, apiKey, apiBaseUrl);
+        response = await callBaichuanApi(messages, apiKey, apiBaseUrl, modelId);
         break;
       case 'chatglm':
-        response = await callChatGLMApi(messages, apiKey, apiBaseUrl);
+        response = await callChatGLMApi(messages, apiKey, apiBaseUrl, modelId);
         break;
       default:
-        throw new Error(`不支持的模型: ${modelName}`);
+        throw new Error(`不支持的模型提供商: ${providerId}`);
     }
-    
+
     return response;
   } catch (error) {
     console.error(`调用${modelName}模型API错误:`, error);
@@ -286,12 +317,15 @@ async function callAiModel(modelName, messages, apiKey, apiBaseUrl) {
 }
 
 // 调用通义千问API
-async function callQwenApi(messages, apiKey, apiBaseUrl) {
+async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
   try {
+    // 选择模型，如果没有指定则使用默认模型
+    const model = modelId || 'qwen-max';
+
     const response = await axios.post(
       `${apiBaseUrl}/chat/completions`,
       {
-        model: 'qwen-max',
+        model: model,
         messages: messages
       },
       {
@@ -310,12 +344,15 @@ async function callQwenApi(messages, apiKey, apiBaseUrl) {
 }
 
 // 调用DeepSeek API
-async function callDeepseekApi(messages, apiKey, apiBaseUrl) {
+async function callDeepseekApi(messages, apiKey, apiBaseUrl, modelId) {
   try {
+    // 选择模型，如果没有指定则使用默认模型
+    const model = modelId || 'deepseek-chat';
+
     const response = await axios.post(
       `${apiBaseUrl}/chat/completions`,
       {
-        model: 'deepseek-chat',
+        model: model,
         messages: messages
       },
       {
@@ -334,12 +371,15 @@ async function callDeepseekApi(messages, apiKey, apiBaseUrl) {
 }
 
 // 调用百川API
-async function callBaichuanApi(messages, apiKey, apiBaseUrl) {
+async function callBaichuanApi(messages, apiKey, apiBaseUrl, modelId) {
   try {
+    // 选择模型，如果没有指定则使用默认模型
+    const model = modelId || 'baichuan-turbo';
+
     const response = await axios.post(
       `${apiBaseUrl}/chat/completions`,
       {
-        model: 'Baichuan2-Turbo',
+        model: model,
         messages: messages
       },
       {
@@ -358,13 +398,16 @@ async function callBaichuanApi(messages, apiKey, apiBaseUrl) {
 }
 
 // 调用智谱ChatGLM API
-async function callChatGLMApi(messages, apiKey, apiBaseUrl) {
+async function callChatGLMApi(messages, apiKey, apiBaseUrl, modelId) {
   try {
+    // 选择模型，如果没有指定则使用默认模型
+    const model = modelId || 'chatglm_turbo';
+
     // 智谱API格式可能与OpenAI不同，需要根据实际情况调整
     const response = await axios.post(
       `${apiBaseUrl}/chat/completions`,
       {
-        model: 'chatglm_turbo',
+        model: model,
         messages: messages
       },
       {

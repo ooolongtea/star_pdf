@@ -92,11 +92,20 @@
           <span
             class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"
           ></span>
-          <span>{{
-            currentConversation
-              ? getModelDisplayName(currentConversation.model_name)
-              : "未选择模型"
-          }}</span>
+          <span
+            :key="currentConversation ? currentConversation.model_name : 'none'"
+            >{{
+              currentConversation
+                ? getModelDisplayName(currentConversation.model_name)
+                : "未选择模型"
+            }}</span
+          >
+          <!-- 模型调试信息 -->
+          <span class="text-xs text-gray-400 ml-2">
+            ({{
+              currentConversation ? currentConversation.model_name : "none"
+            }})
+          </span>
         </div>
         <div class="flex-1 min-h-[40px]">
           <textarea
@@ -192,7 +201,13 @@ export default {
     });
 
     // 监听当前对话变化，聚焦输入框
-    watch(currentConversation, () => {
+    watch(currentConversation, (newVal, oldVal) => {
+      console.log("当前对话变化:", newVal, oldVal);
+      if (newVal) {
+        console.log("当前对话模型:", newVal.model_name);
+        console.log("模型显示名称:", getModelDisplayName(newVal.model_name));
+      }
+
       nextTick(() => {
         if (messageTextarea.value) {
           messageTextarea.value.focus();
@@ -250,6 +265,43 @@ export default {
 
     // 获取模型显示名称
     const getModelDisplayName = (modelName) => {
+      // 如果模型名称为空，返回默认值
+      if (!modelName) {
+        return "未选择模型";
+      }
+
+      // 处理新格式的模型名称（provider:model）
+      if (modelName.includes(":")) {
+        const [providerId, modelId] = modelName.split(":");
+
+        // 获取厂商名称
+        const providerMap = {
+          qwen: "通义千问",
+          deepseek: "DeepSeek",
+          baichuan: "百川",
+          chatglm: "智谱",
+        };
+
+        const providerName = providerMap[providerId] || providerId;
+
+        // 获取模型名称
+        const modelMap = {
+          "qwen-max": "Qwen-Max",
+          "qwen-max-longcontext": "Qwen-Max-Long",
+          "qwen-vl-max": "Qwen-VL-Max",
+          "qwen-32b": "Qwen-32B",
+          "deepseek-chat": "DeepSeek Chat",
+          "deepseek-reasoner": "DeepSeek Reasoner",
+          "baichuan-turbo": "Baichuan Turbo",
+          "chatglm-turbo": "ChatGLM Turbo",
+        };
+
+        const displayModelName = modelMap[modelId] || modelId;
+
+        return `${providerName} - ${displayModelName}`;
+      }
+
+      // 兼容旧格式
       const modelMap = {
         qwen: "通义千问 (Qwen)",
         deepseek: "DeepSeek",

@@ -28,45 +28,6 @@
       </button>
     </div>
 
-    <!-- 模型选择器 -->
-    <div class="px-4 mb-4 pt-4" v-if="!collapsed">
-      <div class="flex items-center justify-between">
-        <div class="flex-1">
-          <ModelSelector
-            v-model="selectedModel"
-            :options="modelOptions"
-            @change="onModelChange"
-          />
-        </div>
-        <button
-          @click="showModelPanel = true"
-          class="ml-2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none"
-          title="高级模型选择"
-        >
-          <svg
-            class="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            ></path>
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            ></path>
-          </svg>
-        </button>
-      </div>
-    </div>
-
     <!-- 对话列表 -->
     <div class="flex-1 overflow-y-auto">
       <div v-if="loading" class="p-4 text-center text-gray-400">
@@ -247,51 +208,16 @@
         </div>
       </div>
     </div>
-
-    <!-- 模型选择面板 -->
-    <div
-      v-if="showModelPanel"
-      class="fixed inset-0 z-20 overflow-y-auto"
-      aria-labelledby="model-panel-title"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center"
-      >
-        <div
-          class="fixed inset-0 bg-gray-600 bg-opacity-50 backdrop-blur-sm transition-opacity"
-          aria-hidden="true"
-          @click="showModelPanel = false"
-        ></div>
-
-        <div
-          class="relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
-        >
-          <ModelSelectorPanel
-            v-model="selectedModel"
-            :options="modelOptions"
-            @change="onModelChange"
-            @close="showModelPanel = false"
-          />
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script>
 import { ref, computed, onMounted } from "vue";
 import { useStore } from "vuex";
-import ModelSelector from "./ModelSelector.vue";
-import ModelSelectorPanel from "./ModelSelectorPanel.vue";
 
 export default {
   name: "ChatSidebar",
-  components: {
-    ModelSelector,
-    ModelSelectorPanel,
-  },
+
   props: {
     collapsed: {
       type: Boolean,
@@ -302,9 +228,7 @@ export default {
   setup(props, { emit }) {
     const store = useStore();
 
-    const selectedModel = ref("qwen");
     const showEditModal = ref(false);
-    const showModelPanel = ref(false);
     const editTitleForm = ref({
       id: null,
       title: "",
@@ -318,7 +242,6 @@ export default {
       () => store.getters["chat/getCurrentConversation"]
     );
     const loading = computed(() => store.getters["chat/isLoading"]);
-    const modelOptions = computed(() => store.getters["chat/getModelOptions"]);
 
     // 加载对话列表
     onMounted(async () => {
@@ -327,7 +250,7 @@ export default {
 
     // 新建对话
     const onNewChat = () => {
-      emit("new-chat", selectedModel.value);
+      emit("new-chat");
     };
 
     // 选择对话
@@ -363,26 +286,17 @@ export default {
       await store.dispatch("chat/deleteConversation", conversation.id);
     };
 
-    // 模型变更
-    const onModelChange = (model) => {
-      selectedModel.value = model;
-    };
-
     return {
       conversations,
       currentConversation,
       loading,
-      selectedModel,
-      modelOptions,
       showEditModal,
-      showModelPanel,
       editTitleForm,
       onNewChat,
       onSelectConversation,
       onEditTitle,
       saveTitle,
       onDeleteConversation,
-      onModelChange,
     };
   },
 };

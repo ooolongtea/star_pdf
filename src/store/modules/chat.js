@@ -1,4 +1,5 @@
 import axios from '../../plugins/axios';
+import { getAllModelOptions } from '../../config/modelConfig';
 
 // 初始状态
 const state = {
@@ -7,12 +8,7 @@ const state = {
   messages: [],
   loading: false,
   error: null,
-  modelOptions: [
-    { value: 'qwen', label: '通义千问 (Qwen)' },
-    { value: 'deepseek', label: 'DeepSeek' },
-    { value: 'baichuan', label: '百川 (Baichuan)' },
-    { value: 'chatglm', label: '智谱 (ChatGLM)' }
-  ]
+  modelOptions: getAllModelOptions()
 };
 
 // 获取器
@@ -42,12 +38,21 @@ const mutations = {
   ADD_CONVERSATION(state, conversation) {
     state.conversations.unshift(conversation);
   },
-  UPDATE_CONVERSATION(state, { id, title }) {
+  UPDATE_CONVERSATION(state, { id, title, model_name }) {
+    console.log('执行UPDATE_CONVERSATION mutation:', { id, title, model_name });
     const index = state.conversations.findIndex(conv => conv.id === id);
     if (index !== -1) {
-      state.conversations[index].title = title;
+      if (title) state.conversations[index].title = title;
+      if (model_name) state.conversations[index].model_name = model_name;
+
       if (state.currentConversation && state.currentConversation.id === id) {
-        state.currentConversation.title = title;
+        console.log('更新当前对话的模型:', model_name);
+        if (title) state.currentConversation.title = title;
+        if (model_name) {
+          state.currentConversation.model_name = model_name;
+          // 强制触发响应式更新
+          state.currentConversation = { ...state.currentConversation };
+        }
       }
     }
   },
@@ -151,6 +156,40 @@ const actions = {
     } catch (error) {
       console.error('更新对话标题失败:', error);
       commit('SET_ERROR', '更新对话标题失败，请稍后重试');
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // 更新对话模型
+  async updateConversationModel({ commit, state }, { id, model_name }) {
+    try {
+      console.log('开始更新对话模型:', id, model_name);
+      console.log('当前对话状态:', state.currentConversation);
+      console.log('当前消息数量:', state.messages.length);
+
+      // 如果对话中已经有消息，不允许更新模型
+      const currentConversation = state.currentConversation;
+      if (currentConversation && currentConversation.id === id && state.messages.length > 0) {
+        console.warn('对话中已有消息，不能更改模型');
+        return;
+      }
+
+      commit('SET_LOADING', true);
+      commit('CLEAR_ERROR');
+
+      console.log('发送请求更新模型:', `/api/chat/conversations/${id}`, { model_name });
+      const response = await axios.put(`/api/chat/conversations/${id}`, { model_name });
+      console.log('服务器响应:', response.data);
+
+      if (response.data.success) {
+        console.log('更新模型成功，提交变更');
+        commit('UPDATE_CONVERSATION', { id, model_name });
+        console.log('更新后的对话状态:', state.currentConversation);
+      }
+    } catch (error) {
+      console.error('更新对话模型失败:', error);
+      commit('SET_ERROR', '更新对话模型失败，请稍后重试');
     } finally {
       commit('SET_LOADING', false);
     }
