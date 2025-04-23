@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen flex flex-col bg-white">
+  <div class="h-[calc(100vh)] flex flex-col bg-white mt-[50px]">
     <div class="flex-1 flex overflow-hidden">
       <!-- 侧边栏 -->
       <div

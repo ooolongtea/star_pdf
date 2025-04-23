@@ -1,9 +1,10 @@
 <template>
   <div
     :class="[
-      'mb-4 flex relative group animate-message-appear',
+      'mb-1 flex relative group',
       message.role === 'user' ? 'justify-end' : 'justify-start',
       message.isError ? 'opacity-70' : '',
+      shouldAnimate ? 'animate-message-appear' : '',
     ]"
   >
     <div class="flex items-start" style="max-width: 85%">
@@ -30,7 +31,7 @@
       </div>
       <div
         :class="[
-          'px-4 py-3 relative transform transition-all duration-200',
+          'px-2.5 py-1 relative transform transition-all duration-200 flex items-center justify-center',
           message.role === 'user'
             ? 'bg-white text-gray-800 border border-gray-200 rounded-2xl rounded-tr-sm shadow-sm'
             : 'bg-gray-50 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm',
@@ -40,7 +41,7 @@
         <!-- 用户头像（右侧） -->
         <div
           v-if="message.role === 'user'"
-          class="absolute -right-12 top-0 flex-shrink-0"
+          class="absolute -right-12 top-1 flex-shrink-0"
         >
           <div
             class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
@@ -51,15 +52,15 @@
         <!-- 复制按钮（悬停时显示） -->
         <div
           v-if="!message.isLoading && !message.isError"
-          class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out z-10"
+          class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out z-10"
         >
           <button
             @click="copyMessage"
-            class="p-1.5 rounded-full hover:bg-gray-200 focus:outline-none transform transition-transform duration-200 hover:scale-110 active:scale-95 text-gray-400 hover:text-gray-700"
+            class="p-1 rounded-full hover:bg-gray-200 focus:outline-none transform transition-transform duration-200 hover:scale-110 active:scale-95 text-gray-400 hover:text-gray-700"
             title="复制消息"
           >
             <svg
-              class="h-4 w-4"
+              class="h-3.5 w-3.5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -76,7 +77,10 @@
         </div>
 
         <!-- 消息内容 -->
-        <div v-if="message.isLoading" class="flex items-center space-x-1">
+        <div
+          v-if="message.isLoading"
+          class="flex items-center justify-center space-x-1 w-full"
+        >
           <div
             class="h-2.5 w-2.5 bg-gray-400 rounded-full animate-bounce"
             style="animation-delay: 0ms"
@@ -90,8 +94,11 @@
             style="animation-delay: 300ms"
           ></div>
         </div>
-        <div v-else>
-          <div v-if="message.isError" class="text-red-500 flex items-start">
+        <div v-else class="w-full flex items-center justify-center">
+          <div
+            v-if="message.isError"
+            class="text-red-500 flex items-center justify-center w-full"
+          >
             <svg
               class="inline-block h-5 w-5 mr-1.5 flex-shrink-0 mt-0.5"
               fill="none"
@@ -108,50 +115,37 @@
             </svg>
             {{ message.content }}
           </div>
-          <div v-else class="whitespace-pre-wrap leading-relaxed">
+          <div
+            v-else
+            class="whitespace-pre-wrap leading-tight markdown-content flex-1 self-center"
+          >
             <TypewriterText
               v-if="message.role === 'assistant' && !isTyped"
               :text="message.content"
-              :speed="20"
+              :speed="5"
+              :startDelay="50"
+              :skipAnimation="!shouldAnimate"
               @typed="isTyped = true"
             />
             <div v-else v-html="formattedContent"></div>
           </div>
         </div>
 
-        <!-- 消息底部信息和操作菜单 -->
-        <div
-          v-if="!message.isLoading"
-          class="flex justify-between items-center mt-2"
-        >
-          <span class="text-xs text-gray-500 opacity-70">
-            {{ formatTime(message.created_at) }}
-          </span>
-
-          <!-- 消息操作菜单 -->
-          <div
-            class="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out"
-          >
-            <button
-              v-if="message.role === 'assistant'"
-              @click="copyMessage"
-              class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors duration-200 transform hover:scale-105 active:scale-95"
-              title="复制"
-            >
-              复制
-            </button>
-          </div>
-        </div>
+        <!-- 不再显示底部信息和操作菜单 -->
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
+import { useStore } from "vuex";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import TypewriterText from "./TypewriterText.vue";
+
+// 全局集合来跟踪已经显示过的消息
+const displayedMessages = new Set();
 
 export default {
   name: "MessageItem",
@@ -165,8 +159,36 @@ export default {
     },
   },
   setup(props) {
-    // 本地状态，用于跟踪打字状态
+    const store = useStore();
+    // 本地状态，用于跟踪打字状态和动画状态
     const isTyped = ref(false);
+    const shouldAnimate = ref(false);
+
+    // 检查这是否是新消息
+    onMounted(() => {
+      // 如果消息有ID并且之前没有显示过，则这是一个新消息
+      if (props.message.id && !displayedMessages.has(props.message.id)) {
+        // 检查这是否是最新的消息
+        const messages = store.getters["chat/getMessages"];
+        const isLatestMessage =
+          messages.length > 0 &&
+          messages[messages.length - 1].id === props.message.id;
+
+        // 只有最新的助手回复才显示动画
+        if (isLatestMessage && props.message.role === "assistant") {
+          shouldAnimate.value = true;
+
+          // 动画结束后标记消息为已显示
+          setTimeout(() => {
+            displayedMessages.add(props.message.id);
+            shouldAnimate.value = false;
+          }, 500);
+        } else {
+          // 非最新消息直接标记为已显示
+          displayedMessages.add(props.message.id);
+        }
+      }
+    });
     // 格式化消息内容，支持Markdown
     const formattedContent = computed(() => {
       if (!props.message.content) return "";
@@ -225,6 +247,7 @@ export default {
       formatTime,
       copyMessage,
       isTyped,
+      shouldAnimate,
     };
   },
 };
@@ -233,7 +256,7 @@ export default {
 <style scoped>
 /* 添加样式以支持Markdown渲染 */
 :deep(pre) {
-  @apply bg-gray-100 p-2 rounded my-2 overflow-x-auto;
+  @apply bg-gray-100 p-1 rounded my-0.5 overflow-x-auto;
 }
 
 :deep(code) {
@@ -250,7 +273,7 @@ export default {
 
 :deep(ul),
 :deep(ol) {
-  @apply pl-5 my-2;
+  @apply pl-4 my-0.5;
 }
 
 :deep(ul) {
@@ -262,20 +285,62 @@ export default {
 }
 
 :deep(blockquote) {
-  @apply border-l-4 border-gray-300 pl-4 italic my-2;
+  @apply border-l-2 border-gray-300 pl-2 italic my-0.5;
 }
 
 :deep(table) {
-  @apply border-collapse border border-gray-300 my-2;
+  @apply border-collapse border border-gray-300 my-0.5 text-sm;
 }
 
 :deep(th),
 :deep(td) {
-  @apply border border-gray-300 px-2 py-1;
+  @apply border border-gray-300 px-1 py-0.5;
 }
 
 :deep(th) {
   @apply bg-gray-100;
+}
+/* Markdown内容的紧凑样式 */
+.markdown-content :deep(p) {
+  margin-top: 0.5rem;
+  margin-bottom: -1rem;
+}
+
+.markdown-content :deep(h1),
+.markdown-content :deep(h2),
+.markdown-content :deep(h3),
+.markdown-content :deep(h4),
+.markdown-content :deep(h5),
+.markdown-content :deep(h6) {
+  margin-top: 0.25rem;
+  margin-bottom: 0.125rem;
+  font-weight: 600;
+}
+
+.markdown-content :deep(h1) {
+  font-size: 1.25rem;
+}
+.markdown-content :deep(h2) {
+  font-size: 1.15rem;
+}
+.markdown-content :deep(h3) {
+  font-size: 1.05rem;
+}
+.markdown-content :deep(h4),
+.markdown-content :deep(h5),
+.markdown-content :deep(h6) {
+  font-size: 1rem;
+}
+
+/* 使列表更加紧凑 */
+.markdown-content :deep(li) {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+
+/* 调整代码块内的文本大小 */
+.markdown-content :deep(pre) {
+  font-size: 0.875rem;
 }
 </style>
 
@@ -312,5 +377,7 @@ export default {
 
 .animate-message-appear {
   animation: messageAppear 0.3s ease-out forwards;
+  animation-iteration-count: 1; /* 确保动画只播放一次 */
+  animation-fill-mode: forwards; /* 保持动画结束时的状态 */
 }
 </style>

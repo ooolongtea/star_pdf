@@ -1,6 +1,6 @@
 <template>
   <div id="app" class="min-h-screen bg-gray-50">
-    <AppHeader v-if="isAuthenticated && !isChatRoute" />
+    <AppHeader v-if="isAuthenticated" />
     <main :class="{ 'container mx-auto px-4 py-6': !isChatRoute }">
       <router-view />
     </main>

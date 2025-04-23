@@ -17,11 +17,15 @@ export default {
     },
     speed: {
       type: Number,
-      default: 30, // 每个字符的打字速度（毫秒）
+      default: 10, // 每个字符的打字速度（毫秒）
     },
     startDelay: {
       type: Number,
-      default: 200, // 开始打字前的延迟（毫秒）
+      default: 100, // 开始打字前的延迟（毫秒）
+    },
+    skipAnimation: {
+      type: Boolean,
+      default: false, // 是否跳过动画，直接显示全部文本
     },
   },
   emits: ["typed"],
@@ -66,7 +70,14 @@ export default {
 
     // 组件挂载时开始打字
     onMounted(() => {
-      startTyping();
+      if (props.skipAnimation) {
+        // 如果跳过动画，直接显示全部文本
+        displayedText.value = props.text;
+        isTyping.value = false;
+        emit("typed");
+      } else {
+        startTyping();
+      }
     });
 
     // 组件卸载前清除定时器
