@@ -12,6 +12,7 @@ import PatentDetail from '../views/PatentDetail.vue';
 import Settings from '../views/Settings.vue';
 import Account from '../views/Account.vue';
 import ApiKeys from '../views/ApiKeys.vue';
+import Chat from '../views/Chat.vue';
 import NotFound from '../views/NotFound.vue';
 
 // 路由配置
@@ -74,6 +75,12 @@ const routes = [
     path: '/api-keys',
     name: 'ApiKeys',
     component: ApiKeys,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/chat',
+    name: 'Chat',
+    component: Chat,
     meta: { requiresAuth: true }
   },
   {

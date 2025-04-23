@@ -58,11 +58,13 @@ const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const patentRoutes = require('./routes/patent.routes');
 const extractionRoutes = require('./routes/extraction.routes');
+const chatRoutes = require('./routes/chat.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/patents', patentRoutes);
 app.use('/api/extraction', extractionRoutes);
+app.use('/api/chat', chatRoutes);
 
 // 错误处理中间件
 app.use((err, req, res, next) => {

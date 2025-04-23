@@ -2,13 +2,15 @@ import { createStore } from 'vuex';
 import auth from './modules/auth';
 import extraction from './modules/extraction';
 import patents from './modules/patents';
+import chat from './modules/chat';
 
 // 创建Vuex存储
 export default createStore({
   modules: {
     auth,
     extraction,
-    patents
+    patents,
+    chat
   },
   // 根状态
   state: {
