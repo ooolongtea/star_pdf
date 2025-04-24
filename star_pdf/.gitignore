@@ -7,6 +7,11 @@ data/
 /img_extractor/downloads/
 /img_extractor/downloads
 
+# 忽略uploads目录
+/uploads/
+/uploads
+uploads/
+
 # Python相关文件
 __pycache__/
 *.py[cod]
@@ -54,4 +59,4 @@ ENV/
 *.pkl
 *.pickle
 *.npy
-*.npz 
+*.npz

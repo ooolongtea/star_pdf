@@ -56,6 +56,13 @@
             AI聊天
           </router-link>
           <router-link
+            to="/pdf-converter"
+            class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
+            :class="{ 'text-blue-600': isActive('/pdf-converter') }"
+          >
+            PDF转换
+          </router-link>
+          <router-link
             to="/settings"
             class="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
             :class="{ 'text-blue-600': isActive('/settings') }"
@@ -285,6 +292,30 @@
               ></path>
             </svg>
             AI聊天
+          </span>
+        </router-link>
+        <router-link
+          to="/pdf-converter"
+          class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50"
+          :class="{ 'text-blue-600 bg-gray-50': isActive('/pdf-converter') }"
+          @click="mobileMenuOpen = false"
+        >
+          <span class="flex items-center">
+            <svg
+              class="h-5 w-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+              ></path>
+            </svg>
+            PDF转换
           </span>
         </router-link>
         <router-link

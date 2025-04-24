@@ -13,6 +13,7 @@ import Settings from '../views/Settings.vue';
 import Account from '../views/Account.vue';
 import ApiKeys from '../views/ApiKeys.vue';
 import Chat from '../views/Chat.vue';
+import PdfConverter from '../views/PdfConverter.vue';
 import NotFound from '../views/NotFound.vue';
 
 // 路由配置
@@ -81,6 +82,12 @@ const routes = [
     path: '/chat',
     name: 'Chat',
     component: Chat,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/pdf-converter',
+    name: 'PdfConverter',
+    component: PdfConverter,
     meta: { requiresAuth: true }
   },
   {
