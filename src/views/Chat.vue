@@ -231,7 +231,7 @@ export default {
 
         // 创建新对话，使用选择的模型
         await store.dispatch("chat/createConversation", {
-          title: "新对话",
+          title: "新对话", // 初始标题，将在用户发送第一条消息后自动更新
           model_name: model,
         });
 

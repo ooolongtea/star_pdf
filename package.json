@@ -10,7 +10,8 @@
     "db:migrate": "node database/migrate.js",
     "db:backup": "node database/backup.js",
     "db:restore": "node database/restore.js",
-    "db:manage": "node database/db-manager.js"
+    "db:manage": "node database/db-manager.js",
+    "start": "node server.js"
   },
   "dependencies": {
     "axios": "^0.27.2",
@@ -18,6 +19,7 @@
     "body-parser": "^1.20.0",
     "compression": "^1.7.4",
     "core-js": "^3.23.3",
+    "connect-history-api-fallback": "^2.0.0",
     "cors": "^2.8.5",
     "dompurify": "^3.2.5",
     "dotenv": "^16.0.1",
@@ -32,6 +34,7 @@
     "mysql2": "^2.3.3",
     "nodemailer": "^6.7.7",
     "rimraf": "^3.0.2",
+    "serve-static": "^1.15.0",
     "uuid": "^8.3.2",
     "vue": "^3.2.37",
     "vue-router": "^4.1.2",

@@ -11,7 +11,8 @@ module.exports = defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true
       }
-    }
+    },
+    historyApiFallback: true // 添加历史模式支持，确保刷新时不会404
   },
 
   // 构建配置

@@ -213,6 +213,21 @@ exports.sendMessage = async (req, res) => {
     // 获取对话历史
     const messages = await messageModel.getByConversationId(id);
 
+    // 检查是否是对话中的第一条消息
+    if (messages.length === 1) {
+      // 如果是第一条消息，使用用户输入的前一部分作为对话标题
+      let newTitle = message.trim();
+
+      // 限制标题长度，最多取前20个字符
+      if (newTitle.length > 20) {
+        newTitle = newTitle.substring(0, 20) + '...';
+      }
+
+      // 更新对话标题
+      console.log('根据用户第一条消息更新对话标题:', newTitle);
+      await conversationModel.updateTitle(id, req.user.id, newTitle);
+    }
+
     // 处理新格式的模型名称（provider:model）
     let providerId = conversation.model_name;
     let modelId = null;

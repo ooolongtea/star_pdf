@@ -3,8 +3,9 @@ import axios from '../../plugins/axios';
 // 初始状态
 const state = {
   token: localStorage.getItem('token') || null,
-  user: null,
-  tokenExpiry: localStorage.getItem('tokenExpiry') || null
+  user: JSON.parse(localStorage.getItem('user')) || null,
+  tokenExpiry: localStorage.getItem('tokenExpiry') || null,
+  isVerifying: false // 添加一个状态来跟踪令牌验证过程
 };
 
 // 获取器
@@ -12,7 +13,8 @@ const getters = {
   isAuthenticated: state => !!state.token && !!state.user,
   getUser: state => state.user,
   getToken: state => state.token,
-  getTokenExpiry: state => state.tokenExpiry
+  getTokenExpiry: state => state.tokenExpiry,
+  isVerifyingToken: state => state.isVerifying
 };
 
 // 修改器
@@ -25,6 +27,15 @@ const mutations = {
   },
   SET_USER(state, user) {
     state.user = user;
+    // 将用户信息存储到本地存储
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
+  },
+  SET_VERIFYING(state, isVerifying) {
+    state.isVerifying = isVerifying;
   },
   CLEAR_AUTH(state) {
     state.token = null;
@@ -32,6 +43,7 @@ const mutations = {
     state.tokenExpiry = null;
     localStorage.removeItem('token');
     localStorage.removeItem('tokenExpiry');
+    localStorage.removeItem('user');
   }
 };
 
@@ -113,29 +125,52 @@ const actions = {
   },
 
   // 验证令牌
-  async verifyToken({ commit, dispatch }, token) {
+  async verifyToken({ commit, dispatch, state }, token) {
+    // 如果已经在验证中，则返回
+    if (state.isVerifying) {
+      console.log('令牌验证已在进行中，跳过重复验证');
+      return;
+    }
+
     try {
+      // 设置验证状态
+      commit('SET_VERIFYING', true);
       dispatch('setLoading', true, { root: true });
+      console.log('开始验证令牌...');
+
+      // 如果没有令牌，则直接返回失败
+      if (!token) {
+        console.log('没有令牌可验证');
+        commit('CLEAR_AUTH');
+        return false;
+      }
+
+      // 设置请求头
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
       const response = await axios.get('/api/auth/verify-token');
 
       if (response.data.success) {
+        console.log('令牌验证成功，设置用户信息');
         commit('SET_USER', response.data.data.user);
         commit('SET_TOKEN', {
           token,
           expiry: response.data.data.expiresAt
         });
+        return true;
       } else {
         // 令牌无效，清除认证状态
+        console.log('令牌验证失败，清除认证状态');
         commit('CLEAR_AUTH');
+        return false;
       }
-
-      return response.data.success;
     } catch (error) {
       console.error('验证令牌错误:', error);
       // 出错时清除认证状态
       commit('CLEAR_AUTH');
       return false;
     } finally {
+      commit('SET_VERIFYING', false);
       dispatch('setLoading', false, { root: true });
     }
   },

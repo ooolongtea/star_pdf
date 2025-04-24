@@ -93,25 +93,54 @@ const routes = [
 // 创建路由
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition;
+    } else {
+      return { top: 0 };
+    }
+  }
 });
 
 // 导航守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
+  // 检查是否有令牌
+  const token = localStorage.getItem('token');
+  const isVerifying = store.getters['auth/isVerifyingToken'];
   const isAuthenticated = store.getters['auth/isAuthenticated'];
 
+  console.log(`路由守卫: ${from.path} -> ${to.path}`);
+  console.log(`认证状态: ${isAuthenticated ? '已登录' : '未登录'}, 令牌: ${token ? '存在' : '不存在'}, 验证中: ${isVerifying}`);
+
+  // 如果有令牌但未认证，并且不在验证中，尝试验证令牌
+  if (token && !isAuthenticated && !isVerifying) {
+    console.log('在路由守卫中验证令牌');
+    try {
+      await store.dispatch('auth/verifyToken', token);
+    } catch (error) {
+      console.error('路由守卫中验证令牌失败:', error);
+    }
+  }
+
+  // 重新获取认证状态（可能已经更新）
+  const updatedIsAuthenticated = store.getters['auth/isAuthenticated'];
+
   // 需要认证但未登录
-  if (to.meta.requiresAuth && !isAuthenticated) {
+  if (to.meta.requiresAuth && !updatedIsAuthenticated) {
+    console.log(`需要认证但未登录，重定向到登录页，目标路径: ${to.fullPath}`);
     next({ name: 'Login', query: { redirect: to.fullPath } });
     return;
   }
 
   // 已登录用户不应访问登录/注册页
-  if (to.meta.hideForAuth && isAuthenticated) {
+  if (to.meta.hideForAuth && updatedIsAuthenticated) {
+    console.log('已登录用户访问登录/注册页，重定向到仪表盘');
     next({ name: 'Dashboard' });
     return;
   }
 
+  console.log(`允许访问: ${to.path}`);
   next();
 });
 

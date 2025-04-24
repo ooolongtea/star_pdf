@@ -12,6 +12,7 @@
 import { computed, onMounted } from "vue";
 import { useStore } from "vuex";
 import { useRoute } from "vue-router";
+import axios from "./plugins/axios";
 import AppHeader from "./components/common/AppHeader.vue";
 import AppFooter from "./components/common/AppFooter.vue";
 
@@ -29,11 +30,25 @@ export default {
     );
     const isChatRoute = computed(() => route.path === "/chat");
 
-    onMounted(() => {
+    onMounted(async () => {
       // 检查本地存储中的令牌
       const token = localStorage.getItem("token");
       if (token) {
-        store.dispatch("auth/verifyToken", token);
+        try {
+          console.log("应用启动，开始验证令牌...");
+          // 验证令牌并等待完成
+          const result = await store.dispatch("auth/verifyToken", token);
+          console.log("令牌验证结果:", result ? "成功" : "失败");
+
+          // 如果验证成功，确保设置请求头
+          if (result) {
+            axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          }
+        } catch (error) {
+          console.error("令牌验证失败:", error);
+        }
+      } else {
+        console.log("未找到令牌，用户未登录");
       }
     });
 
