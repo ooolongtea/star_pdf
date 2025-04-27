@@ -35,8 +35,24 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// 静态文件服务
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// 静态文件服务 - 确保能够访问所有上传的文件
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  setHeaders: (res, filePath) => {
+    // 为图片文件设置缓存头
+    if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.png') || filePath.endsWith('.gif')) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 缓存1天
+      res.setHeader('Content-Type', 'image/' + filePath.split('.').pop());
+    }
+  },
+  // 设置更宽松的选项
+  dotfiles: 'allow',
+  etag: true,
+  extensions: ['jpg', 'jpeg', 'png', 'gif', 'md', 'pdf'],
+  index: false,
+  maxAge: '1d',
+  redirect: false,
+  fallthrough: true
+}));
 
 // 速率限制
 const apiLimiter = rateLimit({

@@ -328,7 +328,32 @@ export default {
     // 渲染Markdown
     const renderedMarkdown = computed(() => {
       if (!markdownContent.value) return "";
-      const html = marked(markdownContent.value);
+
+      // 修复图片路径
+      let content = markdownContent.value;
+
+      // 替换Markdown格式的图片引用
+      content = content.replace(
+        /!\[([^\]]*)\]\(images\/([^)]+)\)/g,
+        (match, alt, imgPath) => {
+          return `![${alt || "图片"}](/api/pdf/files/${
+            selectedFile.value.id
+          }/images/${imgPath})`;
+        }
+      );
+
+      // 替换HTML格式的图片引用
+      content = content.replace(
+        /<img([^>]*)src=["']images\/([^"']+)["']([^>]*)>/g,
+        (match, before, imgPath, after) => {
+          return `<img${before}src="/api/pdf/files/${selectedFile.value.id}/images/${imgPath}"${after}>`;
+        }
+      );
+
+      // 渲染Markdown
+      const html = marked(content);
+
+      // 净化HTML
       return DOMPurify.sanitize(html);
     });
 

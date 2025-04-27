@@ -135,6 +135,9 @@ async function downloadRemoteDirectory(remotePath, localPath, originalFilename =
         } else if (fileBaseName.includes('content_list') && fileExt.toLowerCase() === '.json') {
           // 如果是化学式文件，使用原始文件名加后缀
           localFileName = `${originalNameWithoutExt}_化学式${fileExt}`;
+        } else if (['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt.toLowerCase())) {
+          // 保持图片文件名不变，确保Markdown中的引用能够正确找到图片
+          localFileName = file.name;
         }
       }
 
@@ -888,18 +891,18 @@ exports.convertPdf = async (req, res) => {
 
       try {
         // 将文件信息保存到数据库
-        const connection = await pool.getConnection();
+        const dbConnection = await pool.getConnection();
         try {
           // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
           const userId = req.user && req.user.id ? req.user.id : 1;
 
-          await connection.execute(
+          await dbConnection.execute(
             'INSERT INTO pdf_files (id, user_id, original_filename, file_type, status) VALUES (?, ?, ?, ?, ?)',
             [fileId, userId, originalFilename, fileType, 'processing']
           );
           console.log(`文件信息已保存到数据库: ${fileId}`);
         } finally {
-          connection.release();
+          dbConnection.release();
         }
 
         // 获取文件大小
@@ -981,6 +984,9 @@ exports.convertPdf = async (req, res) => {
             const fileNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
             localMarkdownPath = path.join(resultDir, `${fileNameWithoutExt}.md`);
             fs.writeFileSync(localMarkdownPath, `# ${originalFilename}\n\n文件已成功转换，但未找到Markdown输出。`);
+          } else {
+            // 不修改Markdown文件中的图片引用，保留原始引用
+            console.log(`使用原始Markdown文件: ${localMarkdownPath}`);
           }
 
           // 相对路径，用于存储到数据库
@@ -1018,9 +1024,9 @@ exports.convertPdf = async (req, res) => {
           expiresAt.setDate(expiresAt.getDate() + 30);
 
           // 更新数据库中的文件信息
-          const connection = await pool.getConnection();
+          const dbConn = await pool.getConnection();
           try {
-            await connection.execute(
+            await dbConn.execute(
               `UPDATE pdf_files SET
                 status = ?,
                 markdown_path = ?,
@@ -1044,7 +1050,7 @@ exports.convertPdf = async (req, res) => {
             );
             console.log(`文件信息已更新: ${fileId}`);
           } finally {
-            connection.release();
+            dbConn.release();
           }
 
           // 返回结果
@@ -1110,6 +1116,68 @@ exports.convertPdf = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '文件处理失败',
+      error: error.message
+    });
+  }
+};
+
+// 获取图片文件
+exports.getImageFile = async (req, res) => {
+  try {
+    const fileId = req.params.id;
+    const imageName = req.params.imageName;
+
+    // 构建图片路径
+    const imagePath = path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images', imageName);
+
+    // 检查文件是否存在
+    if (fs.existsSync(imagePath)) {
+      return res.sendFile(imagePath);
+    }
+
+    // 如果文件不存在，尝试查找类似的文件
+    const imagesDir = path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images');
+    if (fs.existsSync(imagesDir)) {
+      const files = fs.readdirSync(imagesDir);
+
+      // 尝试查找匹配的文件
+      const matchingFile = files.find(file => {
+        // 尝试不同的匹配策略
+        // 1. 完全匹配
+        if (file === imageName) return true;
+
+        // 2. 前缀匹配（至少8个字符）
+        if (file.length >= 8 && imageName.length >= 8) {
+          if (file.startsWith(imageName.substring(0, 8)) ||
+            imageName.startsWith(file.substring(0, 8))) {
+            return true;
+          }
+        }
+
+        // 3. 哈希值匹配（去掉文件扩展名后比较）
+        const fileWithoutExt = file.replace(/\.[^/.]+$/, '');
+        const imageNameWithoutExt = imageName.replace(/\.[^/.]+$/, '');
+
+        if (fileWithoutExt === imageNameWithoutExt) return true;
+
+        return false;
+      });
+
+      if (matchingFile) {
+        const matchingPath = path.join(imagesDir, matchingFile);
+        return res.sendFile(matchingPath);
+      }
+    }
+
+    // 如果找不到匹配的文件，返回404错误
+    return res.status(404).json({
+      success: false,
+      message: '图片文件不存在'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: '获取图片文件失败',
       error: error.message
     });
   }
