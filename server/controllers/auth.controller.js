@@ -105,19 +105,35 @@ exports.login = async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: '请提供用户名和密码'
+        message: '请提供用户名/邮箱和密码'
       });
     }
 
     const userModel = new User(req.db);
+    let user;
 
-    // 查找用户
-    const user = await userModel.findByUsername(username);
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: '用户名或密码错误'
-      });
+    // 判断输入的是用户名还是邮箱
+    const isEmail = username.includes('@');
+
+    // 根据输入类型查找用户
+    if (isEmail) {
+      // 使用邮箱查找
+      user = await userModel.findByEmail(username);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: '邮箱或密码错误'
+        });
+      }
+    } else {
+      // 使用用户名查找
+      user = await userModel.findByUsername(username);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: '用户名或密码错误'
+        });
+      }
     }
 
     // 验证密码
@@ -125,7 +141,7 @@ exports.login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: '用户名或密码错误'
+        message: isEmail ? '邮箱或密码错误' : '用户名或密码错误'
       });
     }
 
@@ -236,26 +252,44 @@ exports.sendVerificationCode = async (req, res) => {
     const code = await userModel.generateVerificationCode(email);
 
     // 发送验证码邮件
-    await transporter.sendMail({
-      from: `"专利化学式提取系统" <${process.env.MAIL_USER}>`,
-      to: email,
-      subject: '验证码 - 专利化学式提取系统',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
-          <h2 style="color: #333; text-align: center;">专利化学式提取系统</h2>
-          <p>您好，</p>
-          <p>您的验证码是：</p>
-          <div style="background-color: #f5f5f5; padding: 10px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">
-            ${code}
+    try {
+      await transporter.sendMail({
+        from: `"专利化学式提取系统" <${process.env.MAIL_USER}>`,
+        to: email,
+        subject: '验证码 - 专利化学式提取系统',
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border-radius: 8px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #4A90E2; margin: 0; font-size: 28px; font-weight: 600;">专利化学式提取系统</h1>
+              <div style="width: 100px; height: 4px; background-color: #4A90E2; margin: 15px auto;"></div>
+            </div>
+
+            <div style="color: #333333; font-size: 16px; line-height: 1.6;">
+              <p style="margin-bottom: 20px;">尊敬的用户，您好！</p>
+              <p style="margin-bottom: 20px;">您正在进行账号注册或登录操作，请使用以下验证码完成验证：</p>
+
+              <div style="background-color: #f8f9fa; border-left: 4px solid #4A90E2; padding: 15px 20px; margin: 25px 0; text-align: center;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #4A90E2;">${code}</span>
+              </div>
+
+              <p style="margin-bottom: 10px; color: #666;">验证码有效期为<span style="color: #e74c3c; font-weight: bold;">10分钟</span>，请勿将验证码泄露给他人。</p>
+              <p style="margin-bottom: 20px; color: #666;">如果您没有请求此验证码，请忽略此邮件。</p>
+            </div>
+
+            <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #999; font-size: 13px;">
+              <p>此邮件由系统自动发送，请勿直接回复</p>
+              <p style="margin-top: 10px;">© ${new Date().getFullYear()} 专利化学式提取系统 版权所有</p>
+            </div>
           </div>
-          <p>此验证码将在10分钟后过期。</p>
-          <p>如果您没有请求此验证码，请忽略此邮件。</p>
-          <p style="margin-top: 30px; font-size: 12px; color: #999; text-align: center;">
-            © ${new Date().getFullYear()} 专利化学式提取系统
-          </p>
-        </div>
-      `
-    });
+        `
+      });
+    } catch (emailError) {
+      console.error('邮件发送失败:', emailError);
+      return res.status(500).json({
+        success: false,
+        message: '验证码邮件发送失败，请稍后重试'
+      });
+    }
 
     res.status(200).json({
       success: true,

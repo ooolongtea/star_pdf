@@ -20,7 +20,7 @@
       <form class="mt-8 space-y-6" @submit.prevent="handleSubmit">
         <div class="rounded-md shadow-sm -space-y-px">
           <div>
-            <label for="username" class="sr-only">用户名</label>
+            <label for="username" class="sr-only">用户名或邮箱</label>
             <input
               id="username"
               v-model="form.username"
@@ -28,7 +28,7 @@
               type="text"
               required
               class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-              placeholder="用户名"
+              placeholder="用户名或邮箱"
             />
           </div>
           <div>

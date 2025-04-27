@@ -99,6 +99,9 @@
                 {{ cooldown > 0 ? `${cooldown}秒后重试` : "获取验证码" }}
               </button>
             </div>
+            <p class="mt-1 text-xs text-gray-500">
+              请先填写邮箱，然后点击"获取验证码"按钮。验证码将发送到您的邮箱。
+            </p>
           </div>
         </div>
 
@@ -213,7 +216,12 @@ export default {
 
     // 发送验证码
     const sendVerificationCode = async () => {
-      if (cooldown.value > 0 || !form.email) return;
+      if (cooldown.value > 0 || !form.email) {
+        if (!form.email) {
+          store.dispatch("setError", "请先填写邮箱地址", { root: true });
+        }
+        return;
+      }
 
       try {
         // 发送验证码
@@ -227,8 +235,27 @@ export default {
             clearInterval(timer);
           }
         }, 1000);
+
+        // 显示成功消息
+        store.dispatch(
+          "setNotification",
+          {
+            type: "success",
+            message: "验证码已发送，请查收邮箱",
+          },
+          { root: true }
+        );
       } catch (error) {
-        console.error("发送验证码失败:", error);
+        // 显示错误消息
+        if (error.response?.data?.message) {
+          store.dispatch("setError", error.response.data.message, {
+            root: true,
+          });
+        } else {
+          store.dispatch("setError", "发送验证码失败，请稍后重试", {
+            root: true,
+          });
+        }
       }
     };
 
@@ -248,7 +275,26 @@ export default {
         // 注册成功后跳转到仪表盘
         router.push("/dashboard");
       } catch (error) {
-        console.error("注册失败:", error);
+        // 显示具体的错误信息
+        if (error.response?.data?.message) {
+          const errorMessage = error.response.data.message;
+
+          // 如果是邮箱已被注册的错误，添加登录链接提示
+          if (errorMessage.includes("邮箱已被注册")) {
+            store.dispatch(
+              "setError",
+              `${errorMessage}，您可以直接 <a href="/login" class="text-blue-600 hover:underline">使用此邮箱登录</a>`,
+              {
+                root: true,
+                isHTML: true,
+              }
+            );
+          } else {
+            store.dispatch("setError", errorMessage, {
+              root: true,
+            });
+          }
+        }
       }
     };
 

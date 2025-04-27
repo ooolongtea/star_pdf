@@ -48,7 +48,13 @@ export default createStore({
       commit('SET_LOADING', loading);
     },
     setError({ commit }, error) {
-      commit('SET_ERROR', error);
+      // 如果error是字符串，并且有isHTML标志，则将其转换为对象
+      if (typeof error === 'string' && arguments[2] && arguments[2].isHTML) {
+        commit('SET_ERROR', { message: error, isHTML: true });
+      } else {
+        commit('SET_ERROR', error);
+      }
+
       // 5秒后自动清除错误
       setTimeout(() => {
         commit('CLEAR_ERROR');

@@ -371,5 +371,352 @@ function padRight(str, length) {
   return String(str).padEnd(length);
 }
 
-// 启动程序
-showMenu();
+// 检查命令行参数
+const args = process.argv.slice(2);
+
+if (args.length > 0) {
+  // 命令行模式
+  const command = args[0];
+
+  switch (command) {
+    case 'migrate':
+      executeMigration(true);
+      break;
+    case 'backup':
+      backupDatabase(true);
+      break;
+    case 'restore':
+      const backupFile = args[1];
+      if (backupFile) {
+        // 直接恢复指定的备份文件
+        const restoreScript = path.join(__dirname, 'restore.js');
+        exec(`node "${restoreScript}" "${backupFile}"`, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`恢复失败: ${error.message}`);
+            process.exit(1);
+          }
+          console.log(stdout);
+          process.exit(0);
+        });
+      } else {
+        restoreDatabase(true);
+      }
+      break;
+    case 'status':
+      showDatabaseStatus(true);
+      break;
+    case 'query':
+      if (args.length > 1) {
+        const query = args.slice(1).join(' ');
+        executeQueryDirect(query);
+      } else {
+        console.error('缺少查询语句');
+        process.exit(1);
+      }
+      break;
+    case 'cleanup':
+      const type = args[1] || 'all';
+      cleanupDirectly(type);
+      break;
+    case 'help':
+      showHelp();
+      break;
+    default:
+      console.error(`未知命令: ${command}`);
+      showHelp();
+      process.exit(1);
+  }
+} else {
+  // 交互式模式
+  showMenu();
+}
+
+// 显示帮助信息
+function showHelp() {
+  console.log(`
+数据库管理工具
+
+交互式模式:
+  node database/db-manager.js
+
+命令行模式:
+  node database/db-manager.js [命令] [选项]
+
+命令:
+  migrate           执行数据库迁移
+  backup            备份数据库
+  restore [文件名]   从备份恢复数据库
+  status            查看数据库状态
+  query [SQL]       执行SQL查询
+  cleanup [类型]     清理旧数据 (类型: sessions, codes, all)
+  help              显示帮助信息
+
+示例:
+  node database/db-manager.js migrate
+  node database/db-manager.js backup
+  node database/db-manager.js restore backup_20240601.sql
+  node database/db-manager.js status
+  node database/db-manager.js query "SELECT * FROM users LIMIT 5"
+  node database/db-manager.js cleanup sessions
+  `);
+}
+
+// 执行数据库迁移（命令行模式）
+function executeMigration(exitAfter = false) {
+  console.log('\n执行数据库迁移...');
+
+  const migrateScript = path.join(__dirname, 'migrate.js');
+
+  exec(`node "${migrateScript}"`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`迁移失败: ${error.message}`);
+      if (exitAfter) process.exit(1);
+    } else {
+      console.log(stdout);
+      if (exitAfter) process.exit(0);
+    }
+
+    if (!exitAfter) {
+      rl.question('\n按Enter键返回主菜单...', () => {
+        showMenu();
+      });
+    }
+  });
+}
+
+// 备份数据库（命令行模式）
+function backupDatabase(exitAfter = false) {
+  console.log('\n备份数据库...');
+
+  const backupScript = path.join(__dirname, 'backup.js');
+
+  exec(`node "${backupScript}"`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`备份失败: ${error.message}`);
+      if (exitAfter) process.exit(1);
+    } else {
+      console.log(stdout);
+      if (exitAfter) process.exit(0);
+    }
+
+    if (!exitAfter) {
+      rl.question('\n按Enter键返回主菜单...', () => {
+        showMenu();
+      });
+    }
+  });
+}
+
+// 恢复数据库（命令行模式）
+function restoreDatabase(exitAfter = false) {
+  console.log('\n恢复数据库...');
+
+  const restoreScript = path.join(__dirname, 'restore.js');
+
+  // 使用子进程执行恢复脚本
+  const child = exec(`node "${restoreScript}"`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`恢复失败: ${error.message}`);
+      if (exitAfter) process.exit(1);
+    }
+
+    if (!exitAfter) {
+      rl.question('\n按Enter键返回主菜单...', () => {
+        showMenu();
+      });
+    } else {
+      process.exit(0);
+    }
+  });
+
+  // 将子进程的输出传递到当前进程
+  child.stdout.pipe(process.stdout);
+  child.stderr.pipe(process.stderr);
+
+  // 将当前进程的输入传递到子进程
+  process.stdin.pipe(child.stdin);
+}
+
+// 查看数据库状态（命令行模式）
+async function showDatabaseStatus(exitAfter = false) {
+  console.log('\n查看数据库状态...');
+
+  try {
+    // 创建数据库连接
+    const connection = await mysql.createConnection({
+      host: dbConfig.host,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      database: dbConfig.database
+    });
+
+    // 获取表信息
+    const [tables] = await connection.query(`
+      SELECT
+        table_name,
+        IFNULL(table_rows, 0) as table_rows,
+        IFNULL(data_length, 0) as data_length,
+        IFNULL(index_length, 0) as index_length,
+        create_time,
+        update_time
+      FROM
+        information_schema.tables
+      WHERE
+        table_schema = ?
+      ORDER BY
+        table_name
+    `, [dbConfig.database]);
+
+    // 获取数据库大小
+    const [dbSize] = await connection.query(`
+      SELECT
+        SUM(data_length + index_length) AS total_size
+      FROM
+        information_schema.tables
+      WHERE
+        table_schema = ?
+    `, [dbConfig.database]);
+
+    // 获取最近的迁移
+    const [migrations] = await connection.query(`
+      SELECT name, applied_at
+      FROM migrations
+      ORDER BY applied_at DESC
+      LIMIT 5
+    `);
+
+    // 显示数据库信息
+    console.log(`\n数据库名称: ${dbConfig.database}`);
+    console.log(`数据库大小: ${formatBytes(dbSize[0].total_size || 0)}`);
+    console.log(`表数量: ${tables.length}`);
+
+    // 显示表信息
+    console.log('\n表信息:');
+    console.log('--------------------------------------------------------------');
+    console.log('表名                  行数      大小      创建时间');
+    console.log('--------------------------------------------------------------');
+
+    tables.forEach(table => {
+      const size = formatBytes(parseInt(table.data_length) + parseInt(table.index_length));
+      const createTime = table.create_time ? new Date(table.create_time).toLocaleString() : 'N/A';
+      console.log(`${padRight(table.TABLE_NAME || table.table_name, 20)} ${padRight(table.TABLE_ROWS || table.table_rows || 0, 10)} ${padRight(size, 10)} ${createTime}`);
+    });
+
+    // 显示最近的迁移
+    if (migrations.length > 0) {
+      console.log('\n最近的迁移:');
+      console.log('--------------------------------------------------------------');
+      migrations.forEach(migration => {
+        console.log(`${migration.name} (${new Date(migration.applied_at).toLocaleString()})`);
+      });
+    }
+
+    // 关闭连接
+    await connection.end();
+
+    if (exitAfter) {
+      process.exit(0);
+    }
+  } catch (error) {
+    console.error(`获取数据库状态失败: ${error.message}`);
+    if (exitAfter) {
+      process.exit(1);
+    }
+  }
+
+  if (!exitAfter) {
+    rl.question('\n按Enter键返回主菜单...', () => {
+      showMenu();
+    });
+  }
+}
+
+// 直接执行SQL查询（命令行模式）
+async function executeQueryDirect(query) {
+  try {
+    // 创建数据库连接
+    const connection = await mysql.createConnection({
+      host: dbConfig.host,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      database: dbConfig.database
+    });
+
+    // 执行查询
+    const [results] = await connection.query(query);
+
+    // 显示结果
+    console.log('\n查询结果:');
+    console.log(JSON.stringify(results, null, 2));
+
+    // 关闭连接
+    await connection.end();
+
+    process.exit(0);
+  } catch (error) {
+    console.error(`查询失败: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// 直接清理数据（命令行模式）
+async function cleanupDirectly(type) {
+  try {
+    // 创建数据库连接
+    const connection = await mysql.createConnection({
+      host: dbConfig.host,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      database: dbConfig.database
+    });
+
+    switch (type) {
+      case 'sessions':
+        // 清理旧的会话记录
+        const [sessionResult] = await connection.query(`
+          DELETE FROM sessions
+          WHERE expires_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+        `);
+
+        console.log(`已清理 ${sessionResult.affectedRows} 条过期会话记录`);
+        break;
+
+      case 'codes':
+        // 清理过期的验证码
+        const [codeResult] = await connection.query(`
+          DELETE FROM verification_codes
+          WHERE expires_at < NOW()
+        `);
+
+        console.log(`已清理 ${codeResult.affectedRows} 条过期验证码`);
+        break;
+
+      case 'all':
+        // 清理所有过期数据
+        const [sessionResult2] = await connection.query(`
+          DELETE FROM sessions
+          WHERE expires_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+        `);
+
+        const [codeResult2] = await connection.query(`
+          DELETE FROM verification_codes
+          WHERE expires_at < NOW()
+        `);
+
+        console.log(`已清理 ${sessionResult2.affectedRows} 条过期会话记录`);
+        console.log(`已清理 ${codeResult2.affectedRows} 条过期验证码`);
+        break;
+
+      default:
+        console.error(`未知的清理类型: ${type}`);
+        await connection.end();
+        process.exit(1);
+    }
+
+    await connection.end();
+    process.exit(0);
+  } catch (error) {
+    console.error(`清理数据失败: ${error.message}`);
+    process.exit(1);
+  }
+}

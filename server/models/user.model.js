@@ -154,7 +154,7 @@ class User {
     try {
       // 生成6位随机数字验证码
       const code = Math.floor(100000 + Math.random() * 900000).toString();
-      
+
       // 设置过期时间为10分钟后
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + 10);
@@ -170,6 +170,7 @@ class User {
 
       return code;
     } catch (error) {
+      console.error('生成验证码错误:', error);
       throw error;
     }
   }
@@ -177,6 +178,17 @@ class User {
   // 验证验证码
   async verifyCode(email, code) {
     try {
+      // 首先检查是否有验证码记录
+      const [allCodes] = await this.db.execute(
+        'SELECT * FROM verification_codes WHERE email = ?',
+        [email]
+      );
+
+      if (allCodes.length === 0) {
+        return false;
+      }
+
+      // 检查验证码是否匹配且未过期
       const [rows] = await this.db.execute(
         'SELECT * FROM verification_codes WHERE email = ? AND code = ? AND expires_at > NOW()',
         [email, code]
@@ -188,8 +200,15 @@ class User {
         return true;
       }
 
+      // 如果有记录但不匹配或已过期
+      if (allCodes.length > 0 && rows.length === 0) {
+        // 删除过期的验证码
+        await this.db.execute('DELETE FROM verification_codes WHERE email = ? AND expires_at <= NOW()', [email]);
+      }
+
       return false;
     } catch (error) {
+      console.error('验证验证码错误:', error);
       throw error;
     }
   }

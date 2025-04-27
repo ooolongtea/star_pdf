@@ -62,6 +62,7 @@
             支持的格式: PDF, Word (DOC, DOCX), PowerPoint (PPT, PPTX), 图片
             (JPG, PNG)
           </p>
+          <p class="mt-1 text-xs text-gray-500">文件大小限制: 50MB</p>
         </div>
         <div v-else class="flex items-center justify-between">
           <div class="flex items-center">
@@ -111,36 +112,8 @@
       <!-- 转换选项 -->
       <div class="mb-6">
         <h2 class="text-lg font-medium text-gray-800 mb-3">转换选项</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1"
-              >解析方法</label
-            >
-            <select
-              v-model="parseMethod"
-              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            >
-              <option value="auto">自动检测</option>
-              <option value="ocr">OCR 识别</option>
-              <option value="text">文本提取</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1"
-              >调试模式</label
-            >
-            <div class="flex items-center">
-              <input
-                type="checkbox"
-                id="debug-mode"
-                v-model="debugMode"
-                class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <label for="debug-mode" class="ml-2 text-sm text-gray-700"
-                >启用调试信息</label
-              >
-            </div>
-          </div>
+        <div class="text-sm text-gray-600 mb-2">
+          PDF转换使用默认设置，无需额外配置。上传文件后点击"开始转换"即可。
         </div>
       </div>
 
@@ -221,6 +194,26 @@
               </svg>
               下载 Markdown
             </a>
+
+            <button
+              @click="downloadAllResults(conversionResult.fileId)"
+              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <svg
+                class="mr-2 h-5 w-5 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L7 8m4-4v12"
+                ></path>
+              </svg>
+              下载所有文件
+            </button>
 
             <button
               @click="showMarkdownPreview = true"
@@ -425,6 +418,11 @@
         </div>
       </div>
     </div>
+
+    <!-- 历史转换记录 -->
+    <div class="mt-12 border-t pt-8">
+      <PdfHistory />
+    </div>
   </div>
 </template>
 
@@ -432,9 +430,13 @@
 import { ref, onMounted } from "vue";
 import { useStore } from "vuex";
 import axios from "axios";
+import PdfHistory from "@/components/PdfHistory.vue";
 
 export default {
   name: "PdfConverter",
+  components: {
+    PdfHistory,
+  },
   setup() {
     const store = useStore();
 
@@ -449,9 +451,7 @@ export default {
     const selectedFile = ref(null);
     const isDragging = ref(false);
 
-    // 转换选项
-    const parseMethod = ref("auto");
-    const debugMode = ref(false);
+    // 转换选项 (使用默认设置)
 
     // 转换状态和结果
     const isConverting = ref(false);
@@ -467,6 +467,17 @@ export default {
     const onFileChange = (event) => {
       const file = event.target.files[0];
       if (file) {
+        // 检查文件大小是否超过50MB
+        const fileSizeInMB = file.size / (1024 * 1024);
+        if (fileSizeInMB > 50) {
+          store.dispatch(
+            "setError",
+            `文件过大（${fileSizeInMB.toFixed(
+              2
+            )}MB），超过了50MB的限制。请上传更小的文件。`
+          );
+          return;
+        }
         selectedFile.value = file;
       }
     };
@@ -476,6 +487,17 @@ export default {
       isDragging.value = false;
       const file = event.dataTransfer.files[0];
       if (file) {
+        // 检查文件大小是否超过50MB
+        const fileSizeInMB = file.size / (1024 * 1024);
+        if (fileSizeInMB > 50) {
+          store.dispatch(
+            "setError",
+            `文件过大（${fileSizeInMB.toFixed(
+              2
+            )}MB），超过了50MB的限制。请上传更小的文件。`
+          );
+          return;
+        }
         selectedFile.value = file;
       }
     };
@@ -548,8 +570,6 @@ export default {
         // 创建 FormData 对象
         const formData = new FormData();
         formData.append("file", selectedFile.value);
-        formData.append("parseMethod", parseMethod.value);
-        formData.append("debugMode", debugMode.value);
 
         // 发送请求
         const response = await axios.post("/api/pdf/convert", formData, {
@@ -589,6 +609,45 @@ export default {
       }
     };
 
+    // 下载所有结果
+    const downloadAllResults = (fileId) => {
+      const token = store.getters["auth/getToken"];
+      // 创建一个临时链接元素
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = `/api/pdf/files/${fileId}/download-all`;
+
+      // 使用fetch进行带授权的下载
+      fetch(a.href, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("下载失败");
+          }
+          return response.blob();
+        })
+        .then((blob) => {
+          const url = window.URL.createObjectURL(blob);
+          a.href = url;
+          a.download = `${
+            selectedFile.value
+              ? selectedFile.value.name.replace(/\.[^/.]+$/, "")
+              : "download"
+          }_all_files.zip`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        })
+        .catch((error) => {
+          console.error("下载错误:", error);
+          store.dispatch("setError", "下载失败，请稍后重试");
+        });
+    };
+
     return {
       // 服务器状态
       serverStatus,
@@ -602,9 +661,7 @@ export default {
       onFileDrop,
       formatFileSize,
 
-      // 转换选项
-      parseMethod,
-      debugMode,
+      // 转换选项已移除 (使用默认设置)
 
       // 转换状态和结果
       isConverting,
@@ -616,6 +673,9 @@ export default {
       showMarkdownPreview,
       showFormulasPreview,
       markdownContent,
+
+      // 下载相关
+      downloadAllResults,
     };
   },
 };

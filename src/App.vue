@@ -5,6 +5,12 @@
       <router-view />
     </main>
     <AppFooter v-if="isAuthenticated && !isChatRoute" />
+
+    <!-- 错误提示 -->
+    <ErrorAlert />
+
+    <!-- 通知提示 -->
+    <NotificationAlert />
   </div>
 </template>
 
@@ -15,12 +21,16 @@ import { useRoute } from "vue-router";
 import axios from "./plugins/axios";
 import AppHeader from "./components/common/AppHeader.vue";
 import AppFooter from "./components/common/AppFooter.vue";
+import ErrorAlert from "./components/common/ErrorAlert.vue";
+import NotificationAlert from "./components/common/Notification.vue";
 
 export default {
   name: "App",
   components: {
     AppHeader,
     AppFooter,
+    ErrorAlert,
+    NotificationAlert,
   },
   setup() {
     const store = useStore();

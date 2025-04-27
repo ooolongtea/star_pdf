@@ -73,46 +73,46 @@ class MinerUAPI(ls.LitAPI):
     def decode_request(self, request):
         file_base64 = request['file']
         request_id = request.get('request_id', str(uuid.uuid4()))
-        
+
         logger.info(f"收到请求: {request_id}")
-        
+
         # 转换文件为PDF
         file_bytes = self.cvt2pdf(file_base64)
-        
+
         # 获取处理选项
         opts = request.get('kwargs', {})
         opts.setdefault('debug_able', False)
         opts.setdefault('parse_method', 'auto')
-        
+
         logger.info(f"请求 {request_id} 的处理选项: {opts}")
-        
+
         return request_id, file_bytes, opts
 
     def predict(self, inputs):
         request_id, file_bytes, opts = inputs
         output_dir = self.output_dir.joinpath(request_id)
-        
+
         try:
             logger.info(f"开始处理请求: {request_id}")
             self.do_parse(self.output_dir, request_id, file_bytes, [], **opts)
-            
+
             # 检查输出目录
             auto_dir = output_dir / 'auto'
             if auto_dir.exists():
                 logger.info(f"输出目录存在: {auto_dir}")
-                
+
                 # 检查 Markdown 文件是否存在
                 md_file = auto_dir / f"{request_id}.md"
                 if md_file.exists():
                     logger.info(f"Markdown 文件存在: {md_file}")
                 else:
                     logger.warning(f"Markdown 文件不存在: {md_file}")
-                    
+
                     # 列出目录中的所有文件
                     logger.info(f"目录内容: {list(auto_dir.glob('*'))}")
             else:
                 logger.warning(f"输出目录不存在: {auto_dir}")
-            
+
             logger.info(f"请求处理完成: {request_id}, 输出目录: {output_dir}")
             return {'request_id': request_id, 'output_dir': str(output_dir)}
         except Exception as e:
@@ -138,7 +138,7 @@ class MinerUAPI(ls.LitAPI):
             temp_file = temp_dir.joinpath('tmpfile')
             file_bytes = base64.b64decode(file_base64)
             file_ext = filetype.guess_extension(file_bytes)
-            
+
             logger.info(f"检测到文件类型: {file_ext}")
 
             if file_ext in ['pdf', 'jpg', 'png', 'doc', 'docx', 'ppt', 'pptx']:
@@ -180,19 +180,19 @@ mineru_api = MinerUAPI(output_dir=OUTPUT_DIR)
 # 主函数
 if __name__ == '__main__':
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Simplified MinerU Server')
     parser.add_argument('--port', type=int, default=8010, help='服务器端口')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='服务器主机')
     parser.add_argument('--output-dir', type=str, default='/home/zhangxiaohong/zhouxingyu/zxy_extractor/data/tmp/mineru', help='输出目录')
-    
+
     args = parser.parse_args()
-    
+
     # 更新输出目录
     OUTPUT_DIR = os.path.abspath(args.output_dir)
     os.environ['MINERU_OUTPUT_DIR'] = OUTPUT_DIR
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    
+
     # 创建LitServer
     server = ls.LitServer(
         mineru_api,
@@ -201,12 +201,12 @@ if __name__ == '__main__':
         workers_per_device=2,
         timeout=False
     )
-    
+
     # 检查路由
     @server.app.get("/ping")
     async def ping():
         return {"status": "ok", "message": "MinerU 服务器正在运行"}
-    
+
     @server.app.get("/files")
     async def get_file(path: str):
         try:
@@ -216,7 +216,7 @@ if __name__ == '__main__':
                 logger.error(f"文件不存在: {path}")
                 logger.error(f"绝对路径: {os.path.abspath(path)}")
                 logger.error(f"当前工作目录: {os.getcwd()}")
-                
+
                 # 尝试查找文件的其他可能位置
                 if '/auto/' in path or '\\auto\\' in path:
                     # 尝试在父目录中查找
@@ -225,7 +225,7 @@ if __name__ == '__main__':
                     if parent_file_path.exists():
                         logger.info(f"找到替代文件: {parent_file_path}")
                         return FileResponse(path=parent_file_path)
-                
+
                 # 尝试在 auto 目录中查找
                 if not '/auto/' in path and not '\\auto\\' in path:
                     # 提取请求ID
@@ -233,14 +233,14 @@ if __name__ == '__main__':
                     if len(parts) > 0:
                         file_name = parts[-1]
                         dir_path = '/'.join(parts[:-1])
-                        
+
                         # 尝试在 auto 目录中查找
                         auto_path = f"{dir_path}/auto/{file_name}"
                         auto_file_path = Path(auto_path)
                         if auto_file_path.exists():
                             logger.info(f"找到替代文件: {auto_file_path}")
                             return FileResponse(path=auto_file_path)
-                        
+
                         # 尝试使用请求ID命名的文件
                         if file_name == 'output.md':
                             # 提取请求ID
@@ -252,20 +252,72 @@ if __name__ == '__main__':
                                 if id_file_path.exists():
                                     logger.info(f"找到替代文件: {id_file_path}")
                                     return FileResponse(path=id_file_path)
-                
+
                 raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
-            
+
             if file_path.is_dir():
                 logger.error(f"请求的路径是一个目录，而不是文件: {path}")
                 raise HTTPException(status_code=400, detail=f"请求的路径是一个目录，而不是文件: {path}")
-            
+
             return FileResponse(path=file_path)
         except Exception as e:
             logger.error(f"获取文件错误: {str(e)}")
             if isinstance(e, HTTPException):
                 raise e
             raise HTTPException(status_code=500, detail=str(e))
-    
+
+    @server.app.get("/files/list")
+    async def list_files(path: str):
+        """
+        列出目录中的所有文件和子目录
+
+        参数:
+            path: 目录路径
+
+        返回:
+            包含目录内容的JSON对象
+        """
+        try:
+            dir_path = Path(path)
+            if not dir_path.exists():
+                logger.error(f"目录不存在: {path}")
+                logger.error(f"绝对路径: {os.path.abspath(path)}")
+                logger.error(f"当前工作目录: {os.getcwd()}")
+                raise HTTPException(status_code=404, detail=f"目录不存在: {path}")
+
+            if not dir_path.is_dir():
+                logger.error(f"路径不是目录: {path}")
+                raise HTTPException(status_code=400, detail=f"路径不是目录: {path}")
+
+            files = []
+            for item in dir_path.iterdir():
+                try:
+                    stat_info = item.stat()
+                    files.append({
+                        "name": item.name,
+                        "isDirectory": item.is_dir(),
+                        "size": stat_info.st_size if item.is_file() else 0,
+                        "lastModified": stat_info.st_mtime,
+                        "path": str(item.relative_to(dir_path))
+                    })
+                except Exception as e:
+                    logger.error(f"获取文件信息错误: {item}, {str(e)}")
+                    # 跳过有问题的文件，继续处理其他文件
+                    continue
+
+            return {
+                "path": str(dir_path),
+                "files": files,
+                "total": len(files),
+                "directories": sum(1 for f in files if f["isDirectory"]),
+                "regularFiles": sum(1 for f in files if not f["isDirectory"])
+            }
+        except Exception as e:
+            logger.error(f"列出目录错误: {str(e)}")
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(status_code=500, detail=str(e))
+
     # 启动服务器
     logger.info(f"启动 Simplified MinerU 服务器，监听 {args.host}:{args.port}")
     server.run(host=args.host, port=args.port)

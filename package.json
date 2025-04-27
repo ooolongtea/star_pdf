@@ -14,12 +14,13 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "axios": "^0.27.2",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.0",
     "compression": "^1.7.4",
-    "core-js": "^3.23.3",
     "connect-history-api-fallback": "^2.0.0",
+    "core-js": "^3.23.3",
     "cors": "^2.8.5",
     "dompurify": "^3.2.5",
     "dotenv": "^16.0.1",
