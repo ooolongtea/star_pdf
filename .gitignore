@@ -1,2 +1,5 @@
 node_modules
 uploads/
+retro_extractor/tmp_dataset/
+tmp_dataset/
+tmp_dataset/**/*
