@@ -211,7 +211,7 @@
             <!-- Markdown 预览 -->
             <div
               v-if="markdownContent"
-              class="prose max-w-none"
+              class="prose max-w-none markdown-preview"
               v-html="renderedMarkdown"
             ></div>
 
@@ -301,7 +301,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, nextTick, watch } from "vue";
 import axios from "axios";
 import { useStore } from "vuex";
 import { marked } from "marked";
@@ -332,7 +332,7 @@ export default {
       // 修复图片路径
       let content = markdownContent.value;
 
-      // 替换Markdown格式的图片引用
+      // 替换Markdown格式的图片引用 - 使用data-src实现懒加载
       content = content.replace(
         /!\[([^\]]*)\]\(images\/([^)]+)\)/g,
         (match, alt, imgPath) => {
@@ -342,7 +342,7 @@ export default {
         }
       );
 
-      // 替换HTML格式的图片引用
+      // 替换HTML格式的图片引用 - 使用data-src实现懒加载
       content = content.replace(
         /<img([^>]*)src=["']images\/([^"']+)["']([^>]*)>/g,
         (match, before, imgPath, after) => {
@@ -356,6 +356,58 @@ export default {
       // 净化HTML
       return DOMPurify.sanitize(html);
     });
+
+    // 实现图片懒加载
+    const setupLazyLoading = () => {
+      // 等待DOM更新完成
+      nextTick(() => {
+        // 获取所有图片元素
+        const previewContainer = document.querySelector(".markdown-preview");
+        if (!previewContainer) return;
+
+        const images = previewContainer.querySelectorAll("img");
+        if (!images.length) return;
+
+        // 将所有图片的src属性替换为data-src，并添加懒加载占位符
+        images.forEach((img) => {
+          // 保存原始src到data-src属性
+          img.setAttribute("data-src", img.getAttribute("src"));
+          // 清除src属性，防止立即加载
+          img.setAttribute(
+            "src",
+            "data:image/svg+xml;charset=utf-8,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 300 150%22%2F%3E"
+          );
+          // 添加懒加载样式
+          img.classList.add("lazy-image");
+        });
+
+        // 创建Intersection Observer来监视图片元素
+        const observer = new IntersectionObserver(
+          (entries, observer) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                const img = entry.target;
+                // 当图片进入视口时，加载图片
+                img.setAttribute("src", img.getAttribute("data-src"));
+                img.classList.remove("lazy-image");
+                // 图片加载后，停止观察该元素
+                observer.unobserve(img);
+              }
+            });
+          },
+          {
+            root: null, // 使用视口作为根元素
+            rootMargin: "100px", // 提前100px开始加载
+            threshold: 0.1, // 当10%的图片进入视口时触发
+          }
+        );
+
+        // 开始观察所有图片
+        images.forEach((img) => {
+          observer.observe(img);
+        });
+      });
+    };
 
     // 加载文件列表
     const loadFiles = async () => {
@@ -584,6 +636,14 @@ export default {
         });
     };
 
+    // 监听Markdown内容变化，应用懒加载
+    watch(renderedMarkdown, () => {
+      // 当Markdown内容渲染完成后，设置图片懒加载
+      if (renderedMarkdown.value) {
+        setupLazyLoading();
+      }
+    });
+
     // 组件挂载时加载文件列表
     onMounted(() => {
       loadFiles();
@@ -643,5 +703,21 @@ export default {
 .prose img {
   max-width: 100%;
   height: auto;
+}
+
+/* 懒加载图片样式 */
+.lazy-image {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.lazy-image[src^="data:image"] {
+  min-height: 60px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+}
+
+img[src]:not([src^="data:image"]) {
+  opacity: 1;
 }
 </style>

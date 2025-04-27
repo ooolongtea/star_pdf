@@ -113,59 +113,107 @@ async function downloadRemoteDirectory(remotePath, localPath, originalFilename =
     const requestId = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
 
     // 下载每个文件
+    let downloadPromises = [];
     for (const file of files) {
       const remoteFilePath = `${remotePath}/${file.name}`;
-      let localFileName = file.name;
 
-      // 如果有原始文件名，并且是特定类型的文件，使用更友好的名称
-      if (originalFilename) {
-        const fileExt = path.extname(file.name);
-        const fileBaseName = path.basename(file.name, fileExt);
-        const originalNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
+      // 确定本地文件路径
+      let localFilePath;
 
-        // 为特定类型的文件使用更友好的名称
-        if (fileExt.toLowerCase() === '.md') {
-          // 如果是Markdown文件，使用原始文件名
-          if (fileBaseName === requestId || fileBaseName === 'output') {
-            localFileName = `${originalNameWithoutExt}${fileExt}`;
+      // 保持原始目录结构，不修改文件名
+      if (remotePath.includes('/auto/')) {
+        // 从remotePath中提取相对路径部分
+        const relativePathMatch = remotePath.match(/\/auto\/(.+)/);
+        if (relativePathMatch && relativePathMatch[1]) {
+          const relativePath = relativePathMatch[1];
+          const subDir = path.join(localPath, 'auto', relativePath);
+
+          // 确保子目录存在
+          if (!fs.existsSync(subDir)) {
+            fs.mkdirSync(subDir, { recursive: true });
           }
-        } else if (fileExt.toLowerCase() === '.pdf') {
-          // 如果是PDF文件，使用原始文件名加后缀
-          localFileName = `${originalNameWithoutExt}_转换结果${fileExt}`;
-        } else if (fileBaseName.includes('content_list') && fileExt.toLowerCase() === '.json') {
-          // 如果是化学式文件，使用原始文件名加后缀
-          localFileName = `${originalNameWithoutExt}_化学式${fileExt}`;
-        } else if (['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt.toLowerCase())) {
-          // 保持图片文件名不变，确保Markdown中的引用能够正确找到图片
-          localFileName = file.name;
-        }
-      }
 
-      const localFilePath = path.join(localPath, localFileName);
+          localFilePath = path.join(subDir, file.name);
+        } else {
+          // 如果是auto目录下的文件
+          const autoDir = path.join(localPath, 'auto');
+          if (!fs.existsSync(autoDir)) {
+            fs.mkdirSync(autoDir, { recursive: true });
+          }
+
+          localFilePath = path.join(autoDir, file.name);
+        }
+      } else if (remotePath.includes(`/${requestId}/`)) {
+        // 如果是请求ID目录下的文件，放到auto目录中
+        const autoDir = path.join(localPath, 'auto');
+        if (!fs.existsSync(autoDir)) {
+          fs.mkdirSync(autoDir, { recursive: true });
+        }
+
+        localFilePath = path.join(autoDir, file.name);
+      } else {
+        // 如果是根目录下的文件，也放到auto目录中
+        const autoDir = path.join(localPath, 'auto');
+        if (!fs.existsSync(autoDir)) {
+          fs.mkdirSync(autoDir, { recursive: true });
+        }
+
+        localFilePath = path.join(autoDir, file.name);
+      }
 
       if (file.isDirectory) {
         // 递归下载子目录
         console.log(`下载子目录: ${remoteFilePath}`);
-        await downloadRemoteDirectory(remoteFilePath, localFilePath, originalFilename);
+        const subDirPromise = downloadRemoteDirectory(remoteFilePath, localPath, originalFilename);
+        downloadPromises.push(subDirPromise);
       } else {
         // 下载文件
-        try {
-          console.log(`下载文件: ${remoteFilePath}`);
-          const fileResponse = await axios.get(`${REMOTE_SERVER_BASE_URL}/files?path=${encodeURIComponent(remoteFilePath)}`, {
-            responseType: 'arraybuffer',
-            timeout: 60000 // 设置较长的超时时间，以处理大文件
-          });
+        const filePromise = (async () => {
+          try {
+            // console.log(`下载文件: ${remoteFilePath}`);
+            const fileResponse = await axios.get(`${REMOTE_SERVER_BASE_URL}/files?path=${encodeURIComponent(remoteFilePath)}`, {
+              responseType: 'arraybuffer',
+              timeout: 60000 // 设置较长的超时时间，以处理大文件
+            });
 
-          fs.writeFileSync(localFilePath, fileResponse.data);
-          console.log(`文件已保存: ${localFilePath} (原始文件: ${file.name})`);
-        } catch (error) {
-          console.error(`下载文件失败: ${remoteFilePath}, 错误: ${error.message}`);
-          // 继续下载其他文件，不中断整个过程
-        }
+            // 确保目录存在
+            const fileDir = path.dirname(localFilePath);
+            if (!fs.existsSync(fileDir)) {
+              fs.mkdirSync(fileDir, { recursive: true });
+            }
+
+            fs.writeFileSync(localFilePath, fileResponse.data);
+            // console.log(`文件已保存: ${localFilePath} (原始文件: ${file.name})`);
+
+            // 如果是图片文件，确保在images目录中也有一份副本
+            if (['.jpg', '.jpeg', '.png', '.gif'].includes(path.extname(file.name).toLowerCase())) {
+              const imagesDir = path.join(localPath, 'auto', 'images');
+              if (!fs.existsSync(imagesDir)) {
+                fs.mkdirSync(imagesDir, { recursive: true });
+              }
+
+              const imageInImagesDir = path.join(imagesDir, file.name);
+              if (!fs.existsSync(imageInImagesDir)) {
+                fs.copyFileSync(localFilePath, imageInImagesDir);
+                console.log(`图片已复制到images目录: ${imageInImagesDir}`);
+              }
+            }
+
+            return true;
+          } catch (error) {
+            console.error(`下载文件失败: ${remoteFilePath}, 错误: ${error.message}`);
+            return false;
+          }
+        })();
+        downloadPromises.push(filePromise);
       }
     }
 
-    return true;
+    // 等待所有下载完成
+    const results = await Promise.all(downloadPromises);
+
+    // 如果有文件下载成功，就返回成功
+    return results.some(result => result === true);
   } catch (error) {
     console.error(`下载目录失败: ${remotePath}, 错误: ${error.message}`);
     return false;
@@ -215,7 +263,7 @@ async function initDatabase() {
 initDatabase();
 
 // 测试与远程服务器的连接
-exports.testConnection = async (req, res) => {
+exports.testConnection = async (_, res) => {
   try {
     // console.log('测试与远程服务器的连接...');
     const response = await axios.get('http://172.19.1.81:8010/ping');
@@ -263,10 +311,39 @@ exports.getUserFiles = async (req, res) => {
         // 处理可能的文件名编码问题
         let originalFilename = file.original_filename;
         try {
-          // 确保文件名正确显示
-          const decodedFilename = Buffer.from(originalFilename, 'binary').toString('utf8');
-          if (decodedFilename !== originalFilename && /[^\x00-\x7F]/.test(decodedFilename)) {
-            originalFilename = decodedFilename;
+          // 使用更可靠的方法处理中文文件名
+          if (/[\u0080-\uffff]/.test(originalFilename)) {
+            // 尝试使用不同的编码方式解码
+            try {
+              // 尝试UTF-8解码
+              const buffer = Buffer.from(originalFilename, 'binary');
+              const utf8Name = buffer.toString('utf8');
+              if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+                originalFilename = utf8Name;
+              }
+            } catch (e) {
+              // 如果UTF-8解码失败，尝试GBK/GB2312编码
+              try {
+                const iconv = require('iconv-lite');
+                if (iconv.encodingExists('gbk')) {
+                  const buffer = Buffer.from(originalFilename, 'binary');
+                  const gbkName = iconv.decode(buffer, 'gbk');
+                  if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                    originalFilename = gbkName;
+                  }
+                }
+              } catch (gbkError) {
+                console.error('GBK解码失败:', gbkError);
+              }
+            }
+          }
+
+          // 移除任何不可打印字符
+          originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+          // 确保文件名是有效的
+          if (!originalFilename || originalFilename.trim() === '') {
+            originalFilename = '未命名文件';
           }
         } catch (error) {
           console.error('文件名解码错误:', error);
@@ -346,10 +423,39 @@ exports.getFileDetails = async (req, res) => {
       // 处理可能的文件名编码问题
       let originalFilename = file.original_filename;
       try {
-        // 确保文件名正确显示
-        const decodedFilename = Buffer.from(originalFilename, 'binary').toString('utf8');
-        if (decodedFilename !== originalFilename && /[^\x00-\x7F]/.test(decodedFilename)) {
-          originalFilename = decodedFilename;
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
+        }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
         }
       } catch (error) {
         console.error('文件名解码错误:', error);
@@ -528,10 +634,39 @@ exports.getFileResults = async (req, res) => {
       // 处理可能的文件名编码问题
       let originalFilename = fileInfo.original_filename;
       try {
-        // 确保文件名正确显示
-        const decodedFilename = Buffer.from(originalFilename, 'binary').toString('utf8');
-        if (decodedFilename !== originalFilename && /[^\x00-\x7F]/.test(decodedFilename)) {
-          originalFilename = decodedFilename;
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
+        }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
         }
       } catch (error) {
         console.error('文件名解码错误:', error);
@@ -635,10 +770,39 @@ exports.downloadResultFile = async (req, res) => {
       // 获取原始文件名
       let originalFilename = fileInfo.original_filename;
       try {
-        // 确保文件名正确显示
-        const decodedFilename = Buffer.from(originalFilename, 'binary').toString('utf8');
-        if (decodedFilename !== originalFilename && /[^\x00-\x7F]/.test(decodedFilename)) {
-          originalFilename = decodedFilename;
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
+        }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
         }
       } catch (error) {
         console.error('文件名解码错误:', error);
@@ -703,13 +867,43 @@ exports.downloadAllResults = async (req, res) => {
       // 处理可能的文件名编码问题
       let originalFilename = fileInfo.original_filename;
       try {
-        // 确保文件名正确显示
-        const decodedFilename = Buffer.from(originalFilename, 'binary').toString('utf8');
-        if (decodedFilename !== originalFilename && /[^\x00-\x7F]/.test(decodedFilename)) {
-          originalFilename = decodedFilename;
-          // 更新fileInfo对象，以便后续使用
-          fileInfo.original_filename = originalFilename;
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
         }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
+        }
+
+        // 更新fileInfo对象，以便后续使用
+        fileInfo.original_filename = originalFilename;
       } catch (error) {
         console.error('文件名解码错误:', error);
         // 如果解码失败，使用原始文件名
@@ -726,8 +920,9 @@ exports.downloadAllResults = async (req, res) => {
         });
       }
 
-      // 创建临时ZIP文件
-      const zipFilePath = path.join(require('os').tmpdir(), `${fileInfo.id}_results.zip`);
+      // 创建临时ZIP文件 - 使用原始文件名
+      const fileNameWithoutExt = fileInfo.original_filename.replace(/\.[^/.]+$/, '');
+      const zipFilePath = path.join(require('os').tmpdir(), `${fileNameWithoutExt}_results.zip`);
 
       // 使用archiver创建ZIP文件
       const archiver = require('archiver');
@@ -742,31 +937,18 @@ exports.downloadAllResults = async (req, res) => {
             'UPDATE pdf_files SET download_count = download_count + 1, last_downloaded_at = NOW() WHERE id = ?',
             [id]
           );
-
-          // 构建更友好的文件名
-          const fileNameWithoutExt = fileInfo.original_filename.replace(/\.[^/.]+$/, '');
-          const downloadFileName = `${fileNameWithoutExt}_结果文件.zip`;
-
-          // 发送ZIP文件
-          res.download(zipFilePath, downloadFileName, () => {
-            // 下载完成后删除临时文件
-            if (fs.existsSync(zipFilePath)) {
-              fs.unlinkSync(zipFilePath);
-            }
-          });
         } catch (error) {
           console.error('更新下载信息错误:', error);
-          // 构建更友好的文件名
-          const fileNameWithoutExt = fileInfo.original_filename.replace(/\.[^/.]+$/, '');
-          const downloadFileName = `${fileNameWithoutExt}_结果文件.zip`;
-
-          // 仍然发送文件
-          res.download(zipFilePath, downloadFileName, () => {
-            if (fs.existsSync(zipFilePath)) {
-              fs.unlinkSync(zipFilePath);
-            }
-          });
         }
+
+        // 发送ZIP文件
+        const downloadFileName = `${fileNameWithoutExt}_结果文件.zip`;
+        res.download(zipFilePath, downloadFileName, () => {
+          // 下载完成后删除临时文件
+          if (fs.existsSync(zipFilePath)) {
+            fs.unlinkSync(zipFilePath);
+          }
+        });
       });
 
       // 监听错误事件
@@ -780,12 +962,36 @@ exports.downloadAllResults = async (req, res) => {
       // 将输出流管道连接到文件
       archive.pipe(output);
 
-      // 获取原始文件名（不带扩展名）
-      const fileNameWithoutExt = fileInfo.original_filename.replace(/\.[^/.]+$/, '');
-
-      // 手动添加文件到归档，以便自定义文件名
-      const addFilesToArchive = (dir, baseInZip = '') => {
+      // 预先扫描所有文件
+      const fileList = [];
+      const scanFiles = (dir) => {
         const items = fs.readdirSync(dir);
+        for (const item of items) {
+          const fullPath = path.join(dir, item);
+          const stats = fs.statSync(fullPath);
+          if (stats.isDirectory()) {
+            scanFiles(fullPath);
+          } else {
+            fileList.push({
+              name: item,
+              path: fullPath,
+              ext: path.extname(item).toLowerCase()
+            });
+          }
+        }
+      };
+
+      // 扫描所有文件
+      scanFiles(resultsDir);
+
+      // 手动添加文件到归档，保持原始目录结构
+      const addFilesToArchive = (dir) => {
+        const items = fs.readdirSync(dir);
+
+        // 计算相对于结果目录的路径
+        const relPath = path.relative(resultsDir, dir);
+        // 在ZIP中使用相同的相对路径
+        const zipDir = relPath ? relPath : '';
 
         for (const item of items) {
           const fullPath = path.join(dir, item);
@@ -793,28 +999,10 @@ exports.downloadAllResults = async (req, res) => {
 
           if (stats.isDirectory()) {
             // 如果是目录，递归处理
-            addFilesToArchive(fullPath, path.join(baseInZip, item));
+            addFilesToArchive(fullPath);
           } else {
-            // 如果是文件，添加到归档
-            const fileExt = path.extname(item);
-            const fileBaseName = path.basename(item, fileExt);
-
-            // 为特定类型的文件使用更友好的名称
-            let zipPath;
-            if (fileExt.toLowerCase() === '.md') {
-              // Markdown文件使用原始文件名
-              zipPath = path.join(baseInZip, `${fileNameWithoutExt}${fileExt}`);
-            } else if (fileExt.toLowerCase() === '.pdf') {
-              // PDF文件使用原始文件名
-              zipPath = path.join(baseInZip, `${fileNameWithoutExt}_转换结果${fileExt}`);
-            } else if (fileBaseName.includes('content_list') && fileExt.toLowerCase() === '.json') {
-              // 化学式文件使用原始文件名
-              zipPath = path.join(baseInZip, `${fileNameWithoutExt}_化学式${fileExt}`);
-            } else {
-              // 其他文件保持原样
-              zipPath = path.join(baseInZip, item);
-            }
-
+            // 如果是文件，添加到归档，保持原始文件名
+            const zipPath = zipDir ? path.join(zipDir, item) : item;
             archive.file(fullPath, { name: zipPath });
           }
         }
@@ -863,16 +1051,52 @@ exports.convertPdf = async (req, res) => {
 
       // 处理文件名编码问题
       let originalFilename = req.file.originalname;
-      // 如果文件名包含非ASCII字符，确保正确编码
-      if (/[^\x00-\x7F]/.test(originalFilename)) {
-        try {
-          // 尝试使用Buffer处理编码问题
-          const buffer = Buffer.from(originalFilename, 'binary');
-          originalFilename = buffer.toString('utf8');
-        } catch (error) {
-          console.error('文件名编码转换错误:', error);
-          // 如果转换失败，使用原始文件名
+
+      // 使用更可靠的方法处理中文文件名
+      try {
+        // 检查是否需要解码
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码 - 使用Buffer替代弃用的escape函数
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+              console.log(`UTF-8解码后的文件名: ${originalFilename}`);
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试其他方法
+            try {
+              // 尝试GBK/GB2312编码（常见于中文Windows系统）
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                  console.log(`GBK解码后的文件名: ${originalFilename}`);
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
         }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
+        }
+
+        console.log(`最终处理后的文件名: ${originalFilename}`);
+      } catch (error) {
+        console.error('文件名编码转换错误:', error);
+        // 如果所有转换都失败，使用一个默认名称
+        originalFilename = `未命名文件_${Date.now()}`;
       }
 
       console.log(`处理文件: ${originalFilename}`);

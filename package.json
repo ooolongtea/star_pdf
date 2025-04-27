@@ -28,6 +28,7 @@
     "express-rate-limit": "^6.4.0",
     "extract-zip": "^2.0.1",
     "helmet": "^5.1.0",
+    "iconv-lite": "^0.6.3",
     "jsonwebtoken": "^8.5.1",
     "marked": "^15.0.9",
     "morgan": "^1.10.0",

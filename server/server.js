@@ -60,6 +60,10 @@ const apiLimiter = rateLimit({
   max: 100, // 每个IP限制100个请求
   standardHeaders: true,
   legacyHeaders: false,
+  // 跳过图片请求的速率限制
+  skip: (req) => {
+    return req.path.includes('/files/') && req.path.includes('/images/');
+  }
 });
 app.use('/api/', apiLimiter);
 
