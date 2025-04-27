@@ -2,7 +2,7 @@
   <div
     :class="[
       'mb-1 flex relative group',
-      message.role === 'user' ? 'justify-end' : 'justify-start',
+      message.role === 'user' ? 'justify-end ' : 'justify-start',
       message.isError ? 'opacity-70' : '',
       shouldAnimate ? 'animate-message-appear' : '',
     ]"
@@ -33,7 +33,7 @@
         :class="[
           'px-2.5 py-1 relative transform transition-all duration-200 flex items-center justify-center',
           message.role === 'user'
-            ? 'bg-white text-gray-800 border border-gray-200 rounded-2xl rounded-tr-sm shadow-sm'
+            ? 'bg-white text-gray-800 border border-gray-200 rounded-2xl rounded-tr-sm shadow-sm mr-10'
             : 'bg-gray-50 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm',
           message.isLoading ? 'animate-pulse' : '',
         ]"
@@ -41,7 +41,7 @@
         <!-- 用户头像（右侧） -->
         <div
           v-if="message.role === 'user'"
-          class="absolute -right-12 top-1 flex-shrink-0"
+          class="absolute -right-0 top-1 flex-shrink-0"
         >
           <div
             class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
@@ -127,7 +127,9 @@
               :skipAnimation="!shouldAnimate"
               @typed="isTyped = true"
             />
-            <div v-else v-html="formattedContent"></div>
+            <div v-else class="message-markdown">
+              <div v-html="renderMarkdown(message.content)"></div>
+            </div>
           </div>
         </div>
 
@@ -138,11 +140,11 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, watch, onMounted } from "vue";
 import { useStore } from "vuex";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import TypewriterText from "./TypewriterText.vue";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 // 全局集合来跟踪已经显示过的消息
 const displayedMessages = new Set();
@@ -189,16 +191,6 @@ export default {
         }
       }
     });
-    // 格式化消息内容，支持Markdown
-    const formattedContent = computed(() => {
-      if (!props.message.content) return "";
-
-      // 使用marked解析Markdown
-      const rawHtml = marked(props.message.content);
-
-      // 使用DOMPurify清理HTML，防止XSS攻击
-      return DOMPurify.sanitize(rawHtml);
-    });
 
     // 格式化时间
     const formatTime = (timestamp) => {
@@ -226,10 +218,28 @@ export default {
 
     // 显示复制成功通知
     const showCopiedNotification = () => {
-      // 这里可以集成一个通知组件或使用全局通知系统
-      // 例如，如果有全局状态管理，可以调用如下代码：
-      // store.dispatch('setNotification', { type: 'success', message: '已复制到剪贴板' });
-      alert("已复制到剪贴板");
+      // 创建一个临时提示元素
+      const notification = document.createElement("div");
+      notification.className = "copy-notification";
+      notification.textContent = "已复制到剪贴板";
+
+      // 添加到文档中
+      document.body.appendChild(notification);
+
+      // 添加显示动画
+      setTimeout(() => {
+        notification.classList.add("show");
+      }, 10);
+
+      // 2秒后移除
+      setTimeout(() => {
+        notification.classList.remove("show");
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+          }
+        }, 300); // 等待淡出动画完成
+      }, 2000);
     };
 
     // 监听消息变化，重置打字状态
@@ -242,12 +252,93 @@ export default {
       }
     );
 
+    // 渲染Markdown内容
+    const renderMarkdown = (content) => {
+      if (!content) return "";
+
+      // 使用marked解析Markdown
+      const rawHtml = marked(content);
+
+      // 使用DOMPurify清理HTML，防止XSS攻击
+      const cleanHtml = DOMPurify.sanitize(rawHtml);
+
+      // 在下一个tick中添加复制按钮到代码块
+      setTimeout(() => {
+        addCopyButtonsToCodeBlocks();
+      }, 0);
+
+      return cleanHtml;
+    };
+
+    // 为代码块添加复制按钮
+    const addCopyButtonsToCodeBlocks = () => {
+      // 查找所有代码块
+      const codeBlocks = document.querySelectorAll(".message-markdown pre");
+
+      codeBlocks.forEach((block) => {
+        // 如果已经有复制按钮，则跳过
+        if (block.querySelector(".code-copy-button")) return;
+
+        // 创建复制按钮
+        const copyButton = document.createElement("button");
+        copyButton.className = "code-copy-button";
+        copyButton.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        `;
+
+        // 添加点击事件
+        copyButton.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // 获取代码内容
+          const code = block.querySelector("code");
+          if (!code) return;
+
+          // 复制到剪贴板
+          navigator.clipboard
+            .writeText(code.textContent)
+            .then(() => {
+              // 显示成功提示
+              showCopySuccess(copyButton);
+            })
+            .catch((err) => {
+              console.error("复制失败:", err);
+            });
+        });
+
+        // 添加按钮到代码块
+        block.style.position = "relative";
+        block.appendChild(copyButton);
+      });
+    };
+
+    // 显示复制成功提示
+    const showCopySuccess = (button) => {
+      // 创建提示元素
+      const tooltip = document.createElement("div");
+      tooltip.className = "copy-success-tooltip";
+      tooltip.textContent = "已复制";
+
+      // 添加到按钮旁边
+      button.appendChild(tooltip);
+
+      // 2秒后移除提示
+      setTimeout(() => {
+        if (tooltip.parentNode) {
+          tooltip.parentNode.removeChild(tooltip);
+        }
+      }, 2000);
+    };
+
     return {
-      formattedContent,
       formatTime,
       copyMessage,
       isTyped,
       shouldAnimate,
+      renderMarkdown,
     };
   },
 };
@@ -300,47 +391,77 @@ export default {
 :deep(th) {
   @apply bg-gray-100;
 }
-/* Markdown内容的紧凑样式 */
-.markdown-content :deep(p) {
-  margin-top: 0.5rem;
-  margin-bottom: -1rem;
+/* v-md-editor 样式调整 */
+.message-markdown {
+  max-width: 100%;
+  font-size: 0.95rem;
 }
 
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3),
-.markdown-content :deep(h4),
-.markdown-content :deep(h5),
-.markdown-content :deep(h6) {
-  margin-top: 0.25rem;
-  margin-bottom: 0.125rem;
+/* 移除v-md-editor默认边框和背景 */
+.message-markdown :deep(.v-md-editor) {
+  border: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 移除v-md-editor默认内边距 */
+.message-markdown :deep(.v-md-editor__preview) {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* 调整段落间距 */
+.message-markdown :deep(p) {
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+/* 调整标题样式 */
+.message-markdown :deep(h1),
+.message-markdown :deep(h2),
+.message-markdown :deep(h3),
+.message-markdown :deep(h4),
+.message-markdown :deep(h5),
+.message-markdown :deep(h6) {
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
   font-weight: 600;
 }
 
-.markdown-content :deep(h1) {
+.message-markdown :deep(h1) {
   font-size: 1.25rem;
 }
-.markdown-content :deep(h2) {
+.message-markdown :deep(h2) {
   font-size: 1.15rem;
 }
-.markdown-content :deep(h3) {
+.message-markdown :deep(h3) {
   font-size: 1.05rem;
 }
-.markdown-content :deep(h4),
-.markdown-content :deep(h5),
-.markdown-content :deep(h6) {
+.message-markdown :deep(h4),
+.message-markdown :deep(h5),
+.message-markdown :deep(h6) {
   font-size: 1rem;
 }
 
 /* 使列表更加紧凑 */
-.markdown-content :deep(li) {
+.message-markdown :deep(li) {
   margin-top: 0.125rem;
   margin-bottom: 0.125rem;
 }
 
-/* 调整代码块内的文本大小 */
-.markdown-content :deep(pre) {
+/* 调整代码块样式 */
+.message-markdown :deep(pre) {
   font-size: 0.875rem;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+  background-color: #f3f4f6; /* 更明显的背景色 */
+  border: 1px solid #e5e7eb;
+}
+
+/* 调整表格样式 */
+.message-markdown :deep(table) {
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
 }
 </style>
 
@@ -379,5 +500,67 @@ export default {
   animation: messageAppear 0.3s ease-out forwards;
   animation-iteration-count: 1; /* 确保动画只播放一次 */
   animation-fill-mode: forwards; /* 保持动画结束时的状态 */
+}
+
+/* 代码块复制按钮样式 */
+.code-copy-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 1px solid #e2e8f0;
+  border-radius: 2px;
+  padding: 0px;
+  width: 50px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 8px;
+}
+
+pre:hover .code-copy-button {
+  opacity: 1;
+}
+
+.code-copy-button:hover {
+  background-color: #f1f5f9;
+}
+
+/* 复制成功提示样式 */
+.copy-success-tooltip {
+  position: absolute;
+  top: -20px;
+  right: 0;
+  background-color: #4b5563;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 全局复制通知样式 */
+.copy-notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background-color: #4b5563;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.copy-notification.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 </style>

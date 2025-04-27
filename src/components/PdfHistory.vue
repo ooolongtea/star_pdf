@@ -209,11 +209,14 @@
           </div>
           <div v-else>
             <!-- Markdown 预览 -->
-            <div
+            <v-md-editor
               v-if="markdownContent"
-              class="prose max-w-none markdown-preview"
-              v-html="renderedMarkdown"
-            ></div>
+              v-model="markdownContent"
+              mode="preview"
+              class="markdown-preview"
+              :preview-theme="'github'"
+              @image-click="handleImageClick"
+            ></v-md-editor>
 
             <!-- 文件列表 -->
             <div
@@ -301,11 +304,9 @@
 </template>
 
 <script>
-import { ref, onMounted, computed, nextTick, watch } from "vue";
+import { ref, onMounted, nextTick, watch } from "vue";
 import axios from "axios";
 import { useStore } from "vuex";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 
 export default {
   name: "PdfHistory",
@@ -325,88 +326,41 @@ export default {
     const markdownContent = ref("");
     const fileResults = ref(null);
 
-    // 渲染Markdown
-    const renderedMarkdown = computed(() => {
-      if (!markdownContent.value) return "";
+    // 处理图片点击事件
+    const handleImageClick = (image) => {
+      // 可以在这里实现图片预览功能
+      console.log("图片点击:", image);
+      // 如果需要，可以打开图片预览模态框
+      window.open(image.src, "_blank");
+    };
+
+    // 处理Markdown内容
+    const processMarkdownContent = () => {
+      if (!markdownContent.value || !selectedFile.value) return;
 
       // 修复图片路径
       let content = markdownContent.value;
 
-      // 替换Markdown格式的图片引用 - 使用data-src实现懒加载
+      // 替换Markdown格式的图片引用
       content = content.replace(
         /!\[([^\]]*)\]\(images\/([^)]+)\)/g,
-        (match, alt, imgPath) => {
+        (_, alt, imgPath) => {
           return `![${alt || "图片"}](/api/pdf/files/${
             selectedFile.value.id
           }/images/${imgPath})`;
         }
       );
 
-      // 替换HTML格式的图片引用 - 使用data-src实现懒加载
+      // 替换HTML格式的图片引用
       content = content.replace(
         /<img([^>]*)src=["']images\/([^"']+)["']([^>]*)>/g,
-        (match, before, imgPath, after) => {
+        (_, before, imgPath, after) => {
           return `<img${before}src="/api/pdf/files/${selectedFile.value.id}/images/${imgPath}"${after}>`;
         }
       );
 
-      // 渲染Markdown
-      const html = marked(content);
-
-      // 净化HTML
-      return DOMPurify.sanitize(html);
-    });
-
-    // 实现图片懒加载
-    const setupLazyLoading = () => {
-      // 等待DOM更新完成
-      nextTick(() => {
-        // 获取所有图片元素
-        const previewContainer = document.querySelector(".markdown-preview");
-        if (!previewContainer) return;
-
-        const images = previewContainer.querySelectorAll("img");
-        if (!images.length) return;
-
-        // 将所有图片的src属性替换为data-src，并添加懒加载占位符
-        images.forEach((img) => {
-          // 保存原始src到data-src属性
-          img.setAttribute("data-src", img.getAttribute("src"));
-          // 清除src属性，防止立即加载
-          img.setAttribute(
-            "src",
-            "data:image/svg+xml;charset=utf-8,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 300 150%22%2F%3E"
-          );
-          // 添加懒加载样式
-          img.classList.add("lazy-image");
-        });
-
-        // 创建Intersection Observer来监视图片元素
-        const observer = new IntersectionObserver(
-          (entries, observer) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                const img = entry.target;
-                // 当图片进入视口时，加载图片
-                img.setAttribute("src", img.getAttribute("data-src"));
-                img.classList.remove("lazy-image");
-                // 图片加载后，停止观察该元素
-                observer.unobserve(img);
-              }
-            });
-          },
-          {
-            root: null, // 使用视口作为根元素
-            rootMargin: "100px", // 提前100px开始加载
-            threshold: 0.1, // 当10%的图片进入视口时触发
-          }
-        );
-
-        // 开始观察所有图片
-        images.forEach((img) => {
-          observer.observe(img);
-        });
-      });
+      // 更新Markdown内容
+      markdownContent.value = content;
     };
 
     // 加载文件列表
@@ -461,6 +415,11 @@ export default {
           if (file.markdownUrl) {
             const markdownResponse = await axios.get(file.markdownUrl);
             markdownContent.value = markdownResponse.data;
+
+            // 处理Markdown内容中的图片路径
+            nextTick(() => {
+              processMarkdownContent();
+            });
           }
         } else {
           previewError.value = detailsResponse.data.message || "加载失败";
@@ -636,11 +595,13 @@ export default {
         });
     };
 
-    // 监听Markdown内容变化，应用懒加载
-    watch(renderedMarkdown, () => {
-      // 当Markdown内容渲染完成后，设置图片懒加载
-      if (renderedMarkdown.value) {
-        setupLazyLoading();
+    // 监听Markdown内容变化
+    watch(markdownContent, () => {
+      // 当Markdown内容变化时，处理内容
+      if (markdownContent.value && selectedFile.value) {
+        nextTick(() => {
+          processMarkdownContent();
+        });
       }
     });
 
@@ -659,7 +620,6 @@ export default {
       previewError,
       markdownContent,
       fileResults,
-      renderedMarkdown,
       loadFiles,
       viewFile,
       closePreview,
@@ -669,6 +629,8 @@ export default {
       formatFileSize,
       formatDate,
       getStatusText,
+      handleImageClick,
+      processMarkdownContent,
     };
   },
 };
@@ -700,24 +662,34 @@ export default {
   max-width: 100%;
 }
 
-.prose img {
+/* v-md-editor 样式调整 */
+.markdown-preview {
   max-width: 100%;
   height: auto;
 }
 
-/* 懒加载图片样式 */
-.lazy-image {
-  opacity: 0;
-  transition: opacity 0.3s;
+/* 确保图片不超出容器 */
+.markdown-preview img {
+  max-width: 100%;
+  height: auto;
 }
 
-.lazy-image[src^="data:image"] {
-  min-height: 60px;
-  background-color: #f0f0f0;
+/* 调整代码块样式 */
+.markdown-preview pre {
   border-radius: 4px;
+  margin: 1em 0;
 }
 
-img[src]:not([src^="data:image"]) {
-  opacity: 1;
+/* 调整表格样式 */
+.markdown-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid #ddd;
+  padding: 8px;
 }
 </style>

@@ -23,7 +23,7 @@
     <!-- 下拉菜单 -->
     <div
       v-if="isOpen"
-      class="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm max-h-60"
+      class="absolute z-50 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm max-h-60"
       style="max-height: 300px; overflow-y: auto"
     >
       <!-- 厂商列表 -->

@@ -98,7 +98,7 @@
           <div
             v-if="userMenuOpen"
             @click.stop
-            class="absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-10"
+            class="absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-50"
           >
             <router-link
               to="/settings"
@@ -244,7 +244,7 @@
       <!-- 移动端菜单 -->
       <div
         v-if="mobileMenuOpen"
-        class="md:hidden py-2 border-t border-gray-200"
+        class="md:hidden py-2 border-t border-gray-200 relative z-50"
       >
         <router-link
           to="/dashboard"
