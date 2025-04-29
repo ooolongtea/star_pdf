@@ -130,6 +130,17 @@
             v-else
             class="whitespace-pre-wrap leading-tight markdown-content flex-1 self-center"
           >
+            <!-- 用户消息中的图片 -->
+            <div v-if="message.role === 'user' && message.image" class="mb-2">
+              <img
+                :src="message.image"
+                alt="用户上传图片"
+                class="max-h-60 max-w-full rounded-md object-contain"
+                @click="showFullImage(message.image)"
+              />
+            </div>
+
+            <!-- 文本内容 -->
             <TypewriterText
               v-if="message.role === 'assistant' && !isTyped"
               :text="message.content"
@@ -140,6 +151,29 @@
             />
             <div v-else class="message-markdown">
               <div v-html="renderMarkdown(message.content)"></div>
+            </div>
+
+            <!-- AI回复中的图片 -->
+            <div
+              v-if="
+                message.role === 'assistant' &&
+                message.images &&
+                message.images.length > 0
+              "
+              class="mt-2 flex flex-wrap gap-2"
+            >
+              <div
+                v-for="(img, index) in message.images"
+                :key="index"
+                class="relative border rounded-md overflow-hidden"
+              >
+                <img
+                  :src="img"
+                  alt="AI生成图片"
+                  class="max-h-60 max-w-full object-contain cursor-pointer"
+                  @click="showFullImage(img)"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -443,6 +477,49 @@ export default {
       }, 2000);
     };
 
+    // 显示全屏图片
+    const showFullImage = (imageSrc) => {
+      if (!imageSrc) return;
+
+      // 创建全屏图片查看器
+      const viewer = document.createElement("div");
+      viewer.className =
+        "fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50";
+      viewer.style.backdropFilter = "blur(5px)";
+
+      // 创建图片元素
+      const img = document.createElement("img");
+      img.src = imageSrc;
+      img.className = "max-h-[90vh] max-w-[90vw] object-contain";
+
+      // 创建关闭按钮
+      const closeBtn = document.createElement("button");
+      closeBtn.className =
+        "absolute top-4 right-4 text-white bg-gray-800 rounded-full p-2 hover:bg-gray-700";
+      closeBtn.innerHTML = `
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      `;
+
+      // 添加点击事件
+      closeBtn.addEventListener("click", () => {
+        document.body.removeChild(viewer);
+      });
+
+      // 点击背景关闭
+      viewer.addEventListener("click", (e) => {
+        if (e.target === viewer) {
+          document.body.removeChild(viewer);
+        }
+      });
+
+      // 添加到DOM
+      viewer.appendChild(img);
+      viewer.appendChild(closeBtn);
+      document.body.appendChild(viewer);
+    };
+
     return {
       formatTime,
       copyMessage,
@@ -453,6 +530,7 @@ export default {
       currentModel,
       modelLogo,
       handleImageError,
+      showFullImage,
     };
   },
 };

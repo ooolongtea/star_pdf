@@ -1,6 +1,9 @@
 const Conversation = require('../models/conversation.model');
 const Message = require('../models/message.model');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { saveBase64Image, getImageUrl } = require('../utils/imageProcessor');
 
 // 获取用户的所有对话
 exports.getConversations = async (req, res) => {
@@ -186,12 +189,12 @@ exports.deleteConversation = async (req, res) => {
 exports.sendMessage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { message } = req.body;
+    const { message, image } = req.body;
 
-    if (!message) {
+    if (!message && !image) {
       return res.status(400).json({
         success: false,
-        message: '请提供消息内容'
+        message: '请提供消息内容或图片'
       });
     }
 
@@ -207,8 +210,35 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
+    // 处理图片上传
+    let imagePath = null;
+    let imageUrl = null;
+    if (image) {
+      try {
+        // 保存到chat模块的images目录
+        imagePath = saveBase64Image(image, 'chat', 'images');
+        imageUrl = getImageUrl(imagePath);
+      } catch (error) {
+        console.error('保存图片错误:', error);
+        return res.status(400).json({
+          success: false,
+          message: '图片格式无效或保存失败'
+        });
+      }
+    }
+
     // 保存用户消息
-    await messageModel.create(id, 'user', message);
+    const userMessageContent = message || ''; // 如果只有图片，文本内容为空字符串
+    const savedUserMessage = await messageModel.create(id, 'user', userMessageContent);
+
+    // 如果有图片，更新消息记录添加图片URL
+    if (imageUrl) {
+      await req.db.execute(
+        'UPDATE messages SET image_url = ? WHERE id = ?',
+        [imageUrl, savedUserMessage.id]
+      );
+      savedUserMessage.image_url = imageUrl;
+    }
 
     // 获取对话历史
     const messages = await messageModel.getByConversationId(id);
@@ -253,10 +283,74 @@ exports.sendMessage = async (req, res) => {
     const apiBaseUrl = apiKeyRows[0].api_base_url || getDefaultApiBaseUrl(providerId);
 
     // 准备发送给AI模型的消息历史
-    const messageHistory = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
+    const isVisualModelEnabled = isVisualModel(conversation.model_name);
+
+    // 添加系统消息
+    let messageHistory = [];
+
+    // 如果是视觉模型，添加系统消息
+    if (isVisualModelEnabled) {
+      messageHistory.push({
+        role: 'system',
+        content: [{
+          type: 'text',
+          text: 'You are a helpful assistant that can understand images.'
+        }]
+      });
+    } else {
+      // 普通文本模型的系统消息
+      messageHistory.push({
+        role: 'system',
+        content: 'You are a helpful assistant.'
+      });
+    }
+
+    // 处理用户消息历史
+    messages.forEach(msg => {
+      // 跳过系统消息，因为我们已经添加了
+      if (msg.role === 'system') return;
+
+      let msgObj = {
+        role: msg.role,
+        content: msg.content
+      };
+
+      // 如果是用户消息且有图片，添加图片信息
+      if (msg.role === 'user' && msg.image_url) {
+        try {
+          // 获取图片的完整路径
+          const imagePath = msg.image_url.replace('/api/images/', 'uploads/');
+          const fullPath = path.join(process.cwd(), imagePath);
+
+          // 检查文件是否存在
+          if (fs.existsSync(fullPath)) {
+            // 读取图片文件并转换为Base64
+            const imageBuffer = fs.readFileSync(fullPath);
+            const base64Image = imageBuffer.toString('base64');
+
+            // 获取图片MIME类型
+            const mimeType = getMimeType(fullPath);
+
+            // 构建Base64 URL
+            const base64Url = `data:${mimeType};base64,${base64Image}`;
+
+            // 对于视觉模型，需要特殊处理消息格式
+            if (isVisualModelEnabled) {
+              msgObj.content = [
+                { type: 'text', text: msg.content },
+                { type: 'image_url', image_url: { url: base64Url } }
+              ];
+            }
+          } else {
+            console.error(`图片文件不存在: ${fullPath}`);
+          }
+        } catch (error) {
+          console.error('处理图片错误:', error);
+        }
+      }
+
+      messageHistory.push(msgObj);
+    });
 
     // 调用AI模型API
     const aiResponse = await callAiModel(conversation.model_name, messageHistory, apiKey, apiBaseUrl);
@@ -293,6 +387,37 @@ function getDefaultApiBaseUrl(providerId) {
   };
 
   return baseUrls[providerId] || 'https://api.openai.com/v1';
+}
+
+// 根据文件扩展名获取MIME类型
+function getMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp'
+  };
+
+  return mimeTypes[ext] || 'image/jpeg';
+}
+
+// 检查是否是视觉模型
+function isVisualModel(modelName) {
+  if (!modelName) return false;
+
+  const lowerModelName = modelName.toLowerCase();
+
+  // 检查是否包含视觉模型关键字
+  return lowerModelName.includes('vl') ||
+    lowerModelName.includes('vision') ||
+    lowerModelName.includes('visual') ||
+    lowerModelName.includes('qwen-vl') ||
+    lowerModelName.includes('vl-max') ||
+    lowerModelName.includes('vl-plus') ||
+    lowerModelName.includes('vl-latest');
 }
 
 // 调用不同的AI模型API
@@ -337,12 +462,27 @@ async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
     // 选择模型，如果没有指定则使用默认模型
     const model = modelId || 'qwen-max';
 
+    // 检查是否是视觉模型
+    const isVisual = isVisualModel(model);
+
+    // 构建请求参数
+    const requestBody = {
+      model: model,
+      messages: messages
+    };
+
+    // 如果是视觉模型，可以添加额外参数
+    if (isVisual) {
+      // 可以添加max_tokens等参数
+      requestBody.max_tokens = 1500;
+    }
+
+    // 打印请求体，用于调试
+    console.log('通义千问API请求体:', JSON.stringify(requestBody, null, 2));
+
     const response = await axios.post(
       `${apiBaseUrl}/chat/completions`,
-      {
-        model: model,
-        messages: messages
-      },
+      requestBody,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -351,9 +491,37 @@ async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
       }
     );
 
-    return response.data.choices[0].message.content;
+    // 打印响应，用于调试
+    console.log('通义千问API响应:', JSON.stringify(response.data, null, 2));
+
+    // 处理响应
+    const aiMessage = response.data.choices[0].message;
+    let content = aiMessage.content;
+
+    // 处理视觉模型的多模态响应
+    if (isVisual && typeof content === 'object') {
+      // 处理多模态响应
+      const contentArray = Array.isArray(content) ? content : [content];
+
+      // 提取文本部分
+      let textParts = [];
+
+      for (const part of contentArray) {
+        if (part.type === 'text') {
+          textParts.push(part.text);
+        }
+      }
+
+      // 合并文本部分
+      content = textParts.join('\n');
+    }
+
+    return content;
   } catch (error) {
     console.error('调用通义千问API错误:', error.response?.data || error.message);
+    if (error.response && error.response.data) {
+      console.error('错误详情:', JSON.stringify(error.response.data, null, 2));
+    }
     throw error;
   }
 }

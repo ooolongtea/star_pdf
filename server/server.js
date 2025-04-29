@@ -80,6 +80,7 @@ const patentRoutes = require('./routes/patent.routes');
 const extractionRoutes = require('./routes/extraction.routes');
 const chatRoutes = require('./routes/chat.routes');
 const pdfRoutes = require('./routes/pdf.routes');
+const imageRoutes = require('./routes/image.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -87,6 +88,7 @@ app.use('/api/patents', patentRoutes);
 app.use('/api/extraction', extractionRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/pdf', pdfRoutes);
+app.use('/api/images', imageRoutes);
 
 // 错误处理中间件
 app.use((err, req, res, next) => {

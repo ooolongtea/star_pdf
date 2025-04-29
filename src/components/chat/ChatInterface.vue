@@ -107,6 +107,16 @@
             }})
           </span>
         </div>
+
+        <!-- 图片上传组件 -->
+        <div class="mr-2 flex-shrink-0 self-end">
+          <ImageUploader
+            :disabled="!currentConversation || loading || !isVisualModel"
+            @image-selected="onImageSelected"
+            @image-removed="onImageRemoved"
+          />
+        </div>
+
         <div class="flex-1 min-h-[40px]">
           <textarea
             v-model="messageInput"
@@ -121,7 +131,11 @@
         <button
           type="submit"
           class="ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transform transition-transform duration-200 hover:scale-105 active:scale-95"
-          :disabled="!messageInput.trim() || !currentConversation || loading"
+          :disabled="
+            (!messageInput.trim() && !selectedImage) ||
+            !currentConversation ||
+            loading
+          "
         >
           <svg
             v-if="!loading"
@@ -169,11 +183,13 @@
 import { ref, computed, watch, nextTick, onMounted } from "vue";
 import { useStore } from "vuex";
 import MessageItem from "./MessageItem.vue";
+import ImageUploader from "./ImageUploader.vue";
 
 export default {
   name: "ChatInterface",
   components: {
     MessageItem,
+    ImageUploader,
   },
   emits: ["new-chat"],
   setup(props, { emit }) {
@@ -181,6 +197,8 @@ export default {
     const messageInput = ref("");
     const messagesContainer = ref(null);
     const messageTextarea = ref(null);
+    const selectedImage = ref(null);
+    const selectedImageData = ref(null);
 
     // 从Vuex获取数据
     const currentConversation = computed(
@@ -189,11 +207,37 @@ export default {
     const messages = computed(() => store.getters["chat/getMessages"]);
     const loading = computed(() => store.getters["chat/isLoading"]);
 
+    // 检查当前模型是否支持图片输入
+    const isVisualModel = computed(() => {
+      if (!currentConversation.value || !currentConversation.value.model_name) {
+        return false;
+      }
+
+      const modelName = currentConversation.value.model_name.toLowerCase();
+      return (
+        modelName.includes("vl") ||
+        modelName.includes("vision") ||
+        modelName.includes("visual")
+      );
+    });
+
     // 计算文本区域的行数
     const textareaRows = computed(() => {
       const lines = messageInput.value.split("\n").length;
       return Math.min(Math.max(1, lines), 5); // 最小1行，最大5行
     });
+
+    // 处理图片选择
+    const onImageSelected = (imageData) => {
+      selectedImage.value = imageData.dataUrl;
+      selectedImageData.value = imageData.dataUrl;
+    };
+
+    // 处理图片移除
+    const onImageRemoved = () => {
+      selectedImage.value = null;
+      selectedImageData.value = null;
+    };
 
     // 监听消息变化，自动滚动到底部
     watch(messages, () => {
@@ -234,10 +278,20 @@ export default {
 
     // 发送消息
     const sendMessage = async () => {
-      if (!messageInput.value.trim() || !currentConversation.value) return;
+      // 检查是否有消息内容或图片
+      if (
+        (!messageInput.value.trim() && !selectedImageData.value) ||
+        !currentConversation.value
+      )
+        return;
 
       const message = messageInput.value;
+      const imageData = selectedImageData.value;
+
+      // 清空输入
       messageInput.value = "";
+      selectedImage.value = null;
+      selectedImageData.value = null;
 
       // 添加按钮动画效果
       const sendButton = document.querySelector('button[type="submit"]');
@@ -252,6 +306,7 @@ export default {
         await store.dispatch("chat/sendMessage", {
           conversationId: currentConversation.value.id,
           message,
+          image: imageData,
         });
       } catch (error) {
         console.error("发送消息失败:", error);
@@ -324,6 +379,10 @@ export default {
       sendMessage,
       onNewChat,
       getModelDisplayName,
+      selectedImage,
+      isVisualModel,
+      onImageSelected,
+      onImageRemoved,
     };
   },
 };

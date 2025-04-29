@@ -215,7 +215,10 @@ const actions = {
   },
 
   // 发送消息
-  async sendMessage({ commit, state }, { conversationId, message }) {
+  async sendMessage({ commit, state }, { conversationId, message, image }) {
+    // 定义在函数作用域的开头，这样在整个函数中都可以访问
+    const tempAiMessageId = 'temp-ai-' + Date.now();
+
     try {
       if (!state.currentConversation) {
         throw new Error('没有选择对话');
@@ -226,14 +229,15 @@ const actions = {
         id: 'temp-' + Date.now(),
         conversation_id: conversationId,
         role: 'user',
-        content: message,
+        content: message || '',
+        image: image, // 添加图片到临时消息
         created_at: new Date().toISOString()
       };
       commit('ADD_MESSAGE', userMessage);
 
       // 添加临时的AI消息（用于显示加载状态）
       const tempAiMessage = {
-        id: 'temp-ai-' + Date.now(),
+        id: tempAiMessageId,
         conversation_id: conversationId,
         role: 'assistant',
         content: '正在思考...',
@@ -242,14 +246,22 @@ const actions = {
       };
       commit('ADD_MESSAGE', tempAiMessage);
 
+      // 准备请求数据
+      const requestData = {
+        message: message || ''
+      };
+
+      // 如果有图片，添加到请求中
+      if (image) {
+        requestData.image = image;
+      }
+
       // 发送请求到服务器
-      const response = await axios.post(`/api/chat/conversations/${conversationId}/messages`, {
-        message
-      });
+      const response = await axios.post(`/api/chat/conversations/${conversationId}/messages`, requestData);
 
       if (response.data.success) {
         // 移除临时AI消息
-        commit('SET_MESSAGES', state.messages.filter(msg => msg.id !== tempAiMessage.id));
+        commit('SET_MESSAGES', state.messages.filter(msg => msg.id !== tempAiMessageId));
 
         // 添加真实的AI回复
         commit('ADD_MESSAGE', response.data.data.message);
@@ -260,7 +272,7 @@ const actions = {
       console.error('发送消息失败:', error);
 
       // 移除临时AI消息，添加错误消息
-      if (state.messages.some(msg => msg.id === 'temp-ai-' + Date.now())) {
+      if (state.messages.some(msg => msg.id === tempAiMessageId)) {
         commit('SET_MESSAGES', state.messages.filter(msg => !msg.isLoading));
 
         const errorMessage = {
