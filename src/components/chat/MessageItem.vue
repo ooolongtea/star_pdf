@@ -7,13 +7,35 @@
       shouldAnimate ? 'animate-message-appear' : '',
     ]"
   >
+    <!-- 用户头像（右侧） - 独立于气泡 -->
+    <div
+      v-if="message.role === 'user'"
+      class="absolute right-0 top-1 flex-shrink-0 z-0"
+    >
+      <div
+        class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
+      >
+        <span class="text-sm font-medium">{{ userInitial }}</span>
+      </div>
+    </div>
+
     <div class="flex items-start" style="max-width: 85%">
-      <!-- 用户/AI头像 -->
+      <!-- AI头像 -->
       <div v-if="message.role === 'assistant'" class="flex-shrink-0 mr-2 mt-1">
         <div
-          class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"
+          class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 overflow-hidden"
         >
+          <!-- 根据当前模型显示不同的头像 -->
+          <img
+            v-if="modelLogo"
+            :src="modelLogo"
+            :alt="currentModel?.provider || 'AI'"
+            class="w-6 h-6 object-contain"
+            @error="handleImageError"
+          />
+          <!-- 默认AI图标 -->
           <svg
+            v-else
             class="h-5 w-5"
             fill="none"
             stroke="currentColor"
@@ -38,17 +60,6 @@
           message.isLoading ? 'animate-pulse' : '',
         ]"
       >
-        <!-- 用户头像（右侧） -->
-        <div
-          v-if="message.role === 'user'"
-          class="absolute -right-0 top-1 flex-shrink-0"
-        >
-          <div
-            class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
-          >
-            <span class="text-sm font-medium">U</span>
-          </div>
-        </div>
         <!-- 复制按钮（悬停时显示） -->
         <div
           v-if="!message.isLoading && !message.isError"
@@ -132,8 +143,6 @@
             </div>
           </div>
         </div>
-
-        <!-- 不再显示底部信息和操作菜单 -->
       </div>
     </div>
   </div>
@@ -165,6 +174,107 @@ export default {
     // 本地状态，用于跟踪打字状态和动画状态
     const isTyped = ref(false);
     const shouldAnimate = ref(false);
+
+    // 获取当前用户信息
+    const user = store.getters["auth/getUser"];
+
+    // 获取用户首字母
+    const userInitial = ref("");
+    if (user && user.username) {
+      // 提取用户名的首字母（支持中英文）
+      const username = user.username;
+      if (username) {
+        // 检查是否是中文字符
+        if (/^[\u4e00-\u9fa5]/.test(username)) {
+          userInitial.value = username.charAt(0);
+        } else {
+          userInitial.value = username.charAt(0).toUpperCase();
+        }
+      } else {
+        userInitial.value = "U";
+      }
+    } else {
+      userInitial.value = "U";
+    }
+
+    // 获取当前对话使用的模型
+    const currentModel = ref(null);
+    const modelLogo = ref("");
+
+    // 尝试从消息中获取模型信息
+    if (props.message && props.message.model) {
+      currentModel.value = props.message.model;
+      // 根据模型提供商设置Logo
+      setModelLogo(props.message.model.provider);
+    } else {
+      // 从当前会话获取模型信息
+      const currentConversation = store.getters["chat/getCurrentConversation"];
+
+      if (currentConversation) {
+        // 检查是否有model属性
+        if (currentConversation.model) {
+          currentModel.value = currentConversation.model;
+          // 根据模型提供商设置Logo
+          setModelLogo(currentConversation.model.provider);
+        }
+        // 检查是否有model_name属性
+        else if (currentConversation.model_name) {
+          // 从model_name中提取提供商信息
+          const modelNameParts = currentConversation.model_name.split(":");
+          if (modelNameParts.length > 0) {
+            const provider = modelNameParts[0];
+
+            // 创建一个模型对象
+            currentModel.value = {
+              provider: provider,
+              name: modelNameParts.length > 1 ? modelNameParts[1] : "",
+              fullName: currentConversation.model_name,
+            };
+
+            // 根据提供商设置Logo
+            setModelLogo(provider);
+          }
+        }
+      }
+    }
+
+    // 根据提供商设置模型Logo
+    function setModelLogo(provider) {
+      if (!provider) return;
+
+      const providerLowerCase = provider.toLowerCase();
+
+      // 设置不同厂商的Logo路径
+      if (providerLowerCase.includes("qwen")) {
+        modelLogo.value = window.location.origin + "/images/ai-logos/qwen.png";
+      } else if (providerLowerCase.includes("deepseek")) {
+        modelLogo.value =
+          window.location.origin + "/images/ai-logos/deepseek.png";
+      } else if (providerLowerCase.includes("openai")) {
+        modelLogo.value =
+          window.location.origin + "/images/ai-logos/openai.png";
+      } else if (
+        providerLowerCase.includes("baidu") ||
+        providerLowerCase.includes("ernie")
+      ) {
+        // 如果没有ernie.png，使用默认图标
+        modelLogo.value = "";
+      } else if (
+        providerLowerCase.includes("zhipu") ||
+        providerLowerCase.includes("chatglm")
+      ) {
+        // 如果没有zhipu.png，使用默认图标
+        modelLogo.value = "";
+      } else {
+        modelLogo.value = ""; // 使用默认SVG图标
+      }
+    }
+
+    // 处理图片加载错误
+    const handleImageError = () => {
+      // 图片加载失败时，清空modelLogo，显示默认SVG图标
+      modelLogo.value = "";
+    };
 
     // 检查这是否是新消息
     onMounted(() => {
@@ -339,6 +449,10 @@ export default {
       isTyped,
       shouldAnimate,
       renderMarkdown,
+      userInitial,
+      currentModel,
+      modelLogo,
+      handleImageError,
     };
   },
 };
@@ -511,8 +625,8 @@ export default {
   border: 1px solid #e2e8f0;
   border-radius: 2px;
   padding: 0px;
-  width: 50px;
-  height: 30px;
+  width: 14px;
+  height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;

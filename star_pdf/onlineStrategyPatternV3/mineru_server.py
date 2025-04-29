@@ -14,7 +14,11 @@ from fastapi import HTTPException, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
+
+# 导入自定义解析器
+from word_parser import OnlineWordParser
+from excel_parser import OnlineExcelParser
 
 # 配置日志
 logging.basicConfig(
@@ -39,6 +43,11 @@ class MinerUAPI(ls.LitAPI):
         self.output_dir = Path(os.path.abspath(output_dir))
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 初始化文档解析器
+        self.word_parser = OnlineWordParser()
+        self.excel_parser = OnlineExcelParser()
+
         logger.info(f"初始化 MinerUAPI，输出目录: {self.output_dir}")
 
     def setup(self, device):
@@ -71,42 +80,96 @@ class MinerUAPI(ls.LitAPI):
                 raise
 
     def decode_request(self, request):
+        """
+        解码请求数据
+
+        Args:
+            request: 客户端请求数据
+
+        Returns:
+            tuple: (request_id, file_bytes, opts, is_direct_markdown)
+                - request_id: 请求ID
+                - file_bytes: 文件字节内容（可能为None，如果是直接处理为Markdown的文件）
+                - opts: 处理选项
+                - is_direct_markdown: 是否直接处理为Markdown（不需要PDF转换）
+        """
         file_base64 = request['file']
         request_id = request.get('request_id', str(uuid.uuid4()))
 
         logger.info(f"收到请求: {request_id}")
 
-        # 转换文件为PDF
-        file_bytes = self.cvt2pdf(file_base64)
-
         # 获取处理选项
         opts = request.get('kwargs', {})
         opts.setdefault('debug_able', False)
         opts.setdefault('parse_method', 'auto')
+        opts.setdefault('f_dump_middle_json', False)
+        opts.setdefault('f_dump_model_json', False)
+        opts.setdefault('f_dump_orig_pdf', True)
+        opts.setdefault('f_dump_content_list', False)
+        opts.setdefault('f_draw_model_bbox', False)
+        opts.setdefault('f_draw_layout_bbox', False)
+        opts.setdefault('f_draw_span_bbox', False)
+        opts.setdefault('f_draw_line_sort_bbox', False)
+        opts.setdefault('f_draw_char_bbox', False)
+
+        # 添加请求ID到选项中，供解析器使用
+        opts['request_id'] = request_id
 
         logger.info(f"请求 {request_id} 的处理选项: {opts}")
 
-        return request_id, file_bytes, opts
+        # 转换文件为PDF或直接处理为Markdown
+        file_bytes = self.cvt2pdf(file_base64, request_id)
+
+        # 判断是否直接处理为Markdown（file_bytes为None表示已直接处理）
+        is_direct_markdown = file_bytes is None
+
+        return request_id, file_bytes, opts, is_direct_markdown
 
     def predict(self, inputs):
-        request_id, file_bytes, opts = inputs
+        """
+        处理请求
+
+        Args:
+            inputs: 解码后的请求数据
+
+        Returns:
+            dict: 处理结果
+        """
+        # 解包输入
+        if len(inputs) == 4:
+            request_id, file_bytes, opts, is_direct_markdown = inputs
+        else:
+            # 兼容旧版本接口
+            request_id, file_bytes, opts = inputs
+            is_direct_markdown = False
+
         output_dir = self.output_dir.joinpath(request_id)
 
         try:
             logger.info(f"开始处理请求: {request_id}")
-            self.do_parse(self.output_dir, request_id, file_bytes, [], **opts)
+
+            # 如果是直接处理为Markdown的文件类型（如Word、Excel），跳过PDF处理
+            if is_direct_markdown:
+                logger.info(f"文件已直接处理为Markdown: {request_id}")
+            else:
+                # 使用PDF处理流程
+                if file_bytes:
+                    self.do_parse(self.output_dir, request_id, file_bytes, [], **opts)
+                else:
+                    logger.error(f"文件内容为空: {request_id}")
+                    raise ValueError("文件内容为空")
 
             # 检查输出目录
             auto_dir = output_dir / 'auto'
             if auto_dir.exists():
                 logger.info(f"输出目录存在: {auto_dir}")
 
-                # 检查 Markdown 文件是否存在
+                # 检查Markdown文件是否存在
                 md_file = auto_dir / f"{request_id}.md"
                 if md_file.exists():
-                    logger.info(f"Markdown 文件存在: {md_file}")
+                    logger.info(f"Markdown文件存在: {md_file}")
                 else:
-                    logger.warning(f"Markdown 文件不存在: {md_file}")
+                    logger.warning(f"Markdown文件不存在: {md_file}")
 
                     # 列出目录中的所有文件
                     logger.info(f"目录内容: {list(auto_dir.glob('*'))}")
@@ -132,31 +195,92 @@ class MinerUAPI(ls.LitAPI):
             torch.cuda.ipc_collect()
         gc.collect()
 
-    def cvt2pdf(self, file_base64):
+    def cvt2pdf(self, file_base64, request_id=None):
+        """
+        将文件转换为PDF或处理为Markdown
+
+        Args:
+            file_base64: Base64编码的文件内容
+            request_id: 请求ID，用于创建输出目录
+
+        Returns:
+            bytes: PDF文件内容或None（如果是直接处理为Markdown的文件类型）
+        """
+        temp_dir = Path(tempfile.mkdtemp())
+        temp_file = temp_dir.joinpath('tmpfile')
+
         try:
-            temp_dir = Path(tempfile.mkdtemp())
-            temp_file = temp_dir.joinpath('tmpfile')
+            # 解码文件内容
             file_bytes = base64.b64decode(file_base64)
+
+            # 检测文件类型
             file_ext = filetype.guess_extension(file_bytes)
+            if not file_ext and temp_file.suffix:
+                # 如果无法检测到类型，尝试使用文件后缀
+                file_ext = temp_file.suffix.lstrip('.')
 
             logger.info(f"检测到文件类型: {file_ext}")
 
-            if file_ext in ['pdf', 'jpg', 'png', 'doc', 'docx', 'ppt', 'pptx']:
-                if file_ext == 'pdf':
-                    return file_bytes
-                elif file_ext in ['jpg', 'png']:
-                    with fitz.open(stream=file_bytes, filetype=file_ext) as f:
-                        return f.convert_to_pdf()
+            # 根据文件类型进行处理
+            if file_ext == 'pdf':
+                # PDF文件直接返回
+                return file_bytes
+
+            elif file_ext in ['jpg', 'png', 'jpeg', 'gif']:
+                # 图片文件转换为PDF
+                with fitz.open(stream=file_bytes, filetype=file_ext) as f:
+                    return f.convert_to_pdf()
+
+            elif file_ext in ['doc', 'docx']:
+                # Word文档处理
+                if request_id:
+                    # 使用自定义解析器直接处理为Markdown
+                    output_dir = self.output_dir
+                    filename = f"document.{file_ext}"
+                    opts = {'request_id': request_id}
+
+                    # 调用Word解析器
+                    self.word_parser.parse(file_bytes, filename, output_dir, opts)
+                    return None  # 不返回PDF内容，因为已经直接处理为Markdown
                 else:
+                    # 如果没有请求ID，使用传统方式转换为PDF
                     temp_file.write_bytes(file_bytes)
                     self.convert_file_to_pdf(temp_file, temp_dir)
                     return temp_file.with_suffix('.pdf').read_bytes()
+
+            elif file_ext in ['xls', 'xlsx']:
+                # Excel文档处理
+                if request_id:
+                    # 使用自定义解析器直接处理为Markdown
+                    output_dir = self.output_dir
+                    filename = f"spreadsheet.{file_ext}"
+                    opts = {'request_id': request_id}
+
+                    # 调用Excel解析器
+                    self.excel_parser.parse(file_bytes, filename, output_dir, opts)
+                    return None  # 不返回PDF内容，因为已经直接处理为Markdown
+                else:
+                    # 如果没有请求ID，尝试转换为PDF（可能不完美）
+                    temp_file.write_bytes(file_bytes)
+                    self.convert_file_to_pdf(temp_file, temp_dir)
+                    return temp_file.with_suffix('.pdf').read_bytes()
+
+            elif file_ext in ['ppt', 'pptx']:
+                # PowerPoint文档转换为PDF
+                temp_file.write_bytes(file_bytes)
+                self.convert_file_to_pdf(temp_file, temp_dir)
+                return temp_file.with_suffix('.pdf').read_bytes()
+
             else:
+                # 不支持的文件格式
                 raise Exception(f'不支持的文件格式: {file_ext}')
+
         except Exception as e:
             logger.error(f"文件转换错误: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
+
         finally:
+            # 清理临时目录
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 # 创建FastAPI应用

@@ -224,7 +224,7 @@ exports.sendMessage = async (req, res) => {
       }
 
       // 更新对话标题
-      console.log('根据用户第一条消息更新对话标题:', newTitle);
+      // console.log('根据用户第一条消息更新对话标题:', newTitle);
       await conversationModel.updateTitle(id, req.user.id, newTitle);
     }
 
