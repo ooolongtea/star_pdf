@@ -154,7 +154,13 @@ class MinerUAPI(ls.LitAPI):
             else:
                 # 使用PDF处理流程
                 if file_bytes:
-                    self.do_parse(self.output_dir, request_id, file_bytes, [], **opts)
+                    # 创建一个不包含request_id的选项副本
+                    parse_opts = opts.copy()
+                    if 'request_id' in parse_opts:
+                        del parse_opts['request_id']
+
+                    # 使用不包含request_id的选项调用do_parse
+                    self.do_parse(self.output_dir, request_id, file_bytes, [], **parse_opts)
                 else:
                     logger.error(f"文件内容为空: {request_id}")
                     raise ValueError("文件内容为空")

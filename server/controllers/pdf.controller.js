@@ -1168,16 +1168,44 @@ exports.convertPdf = async (req, res) => {
         const fileContent = fs.readFileSync(filePath);
         const fileBase64 = fileContent.toString('base64');
 
+        // 获取用户ID或从查询参数中获取URL
+        const userId = req.user && req.user.id ? req.user.id : 1;
+
+        // 获取用户配置的服务器URL或使用默认值
+        let serverUrl = await mineruClient.getUserServerUrl(userId, 'mineru');
+
+        // 确保URL以/predict结尾
+        if (serverUrl && !serverUrl.endsWith('/predict')) {
+          serverUrl = serverUrl + '/predict';
+        }
+
         // 发送请求到远程服务器
-        console.log(`发送请求到远程服务器: ${REMOTE_SERVER_URL}`);
-        const response = await axios.post(REMOTE_SERVER_URL, {
+        console.log(`发送请求到远程服务器: ${serverUrl}`);
+
+        // 准备请求数据
+        let requestData = {
           file: fileBase64,
           kwargs: {
             // PDF转换不涉及化学公式，使用默认参数
             debug_able: false
-          },
-          request_id: fileId // 使用文件ID作为请求ID
-        }, {
+          }
+        };
+
+        // 根据文件类型调整请求参数
+        if (fileType.toLowerCase() === 'docx' || fileType.toLowerCase() === 'doc') {
+          // Word文件处理需要request_id参数
+          requestData.request_id = fileId;
+        } else if (fileType.toLowerCase() === 'pdf') {
+          // PDF文件处理不需要request_id参数
+          // 但可能需要在kwargs中添加其他特定参数
+          // 这里不添加request_id
+        } else {
+          // 其他类型文件，尝试添加request_id到kwargs
+          requestData.kwargs.request_id = fileId;
+        }
+
+        console.log(`请求参数: ${JSON.stringify(requestData, null, 2)}`);
+        const response = await axios.post(serverUrl, requestData, {
           timeout: 300000, // 设置超时时间为5分钟
           maxBodyLength: 100 * 1024 * 1024, // 设置最大请求体大小为100MB
           maxContentLength: 100 * 1024 * 1024 // 设置最大内容长度为100MB
@@ -1191,7 +1219,8 @@ exports.convertPdf = async (req, res) => {
           const outputDirFormatted = outputDir.replace(/\\/g, '/');
 
           // 从请求ID中提取文件名
-          const requestId = response.data.request_id;
+          // 对于PDF文件，可能没有返回request_id，使用我们自己的fileId
+          const requestId = response.data.request_id || fileId;
 
           // 设置本地保存目录
           const resultDir = path.join(__dirname, '../../uploads/results', fileId);
