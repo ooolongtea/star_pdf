@@ -31,4 +31,7 @@ router.get('/files/:id/download', pdfController.downloadResultFile);
 // 下载所有结果（打包为ZIP）
 router.get('/files/:id/download-all', pdfController.downloadAllResults);
 
+// 批量下载多个文件的结果（打包为ZIP）
+router.post('/files/batch-download', pdfController.downloadMultipleResults);
+
 module.exports = router;

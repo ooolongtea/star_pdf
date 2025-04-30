@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const axios = require('axios');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const mysql = require('mysql2/promise'); // 使用 mysql2 的 promise 接口
+const archiver = require('archiver'); // 用于创建ZIP文件
 
 // 数据库配置
 const dbConfig = {
@@ -1518,6 +1520,204 @@ exports.getImageFile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '获取图片文件失败',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * 批量下载多个文件的结果
+ * @param {Object} req - 请求对象
+ * @param {Object} res - 响应对象
+ */
+exports.downloadMultipleResults = async (req, res) => {
+  try {
+    let fileIds = req.body.fileIds;
+    const userId = req.user.id;
+
+    // 处理可能的JSON字符串
+    if (typeof fileIds === 'string') {
+      try {
+        fileIds = JSON.parse(fileIds);
+      } catch (e) {
+        console.error('解析fileIds失败:', e);
+      }
+    }
+
+    if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "请提供有效的文件ID列表",
+      });
+    }
+
+    // 限制一次最多下载的文件数量
+    if (fileIds.length > 10) {
+      return res.status(400).json({
+        success: false,
+        message: "一次最多只能下载10个文件",
+      });
+    }
+
+    // 创建临时目录
+    const batchId = uuidv4();
+    const batchTempDir = path.join(os.tmpdir(), batchId);
+    fs.mkdirSync(batchTempDir, { recursive: true });
+
+    // 获取文件信息并验证所有权
+    const filePromises = fileIds.map(async (fileId) => {
+      const connection = await pool.getConnection();
+      try {
+        const [rows] = await connection.execute(
+          "SELECT * FROM pdf_files WHERE id = ? AND user_id = ?",
+          [fileId, userId]
+        );
+
+        if (rows.length === 0) {
+          return { fileId, error: "文件不存在或无权访问" };
+        }
+
+        return { fileId, file: rows[0], error: null };
+      } finally {
+        connection.release();
+      }
+    });
+
+    const fileResults = await Promise.all(filePromises);
+    const validFiles = fileResults.filter((result) => !result.error);
+
+    if (validFiles.length === 0) {
+      fs.rmSync(batchTempDir, { recursive: true, force: true });
+      return res.status(404).json({
+        success: false,
+        message: "没有找到有效的文件",
+      });
+    }
+
+    // 为每个文件创建一个子目录
+    for (const fileResult of validFiles) {
+      const file = fileResult.file;
+
+      // 处理可能的文件名编码问题
+      let originalFilename = file.original_filename;
+      try {
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
+        }
+
+        // 移除任何不可打印字符和非法文件名字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        originalFilename = originalFilename.replace(/[\\/:*?"<>|]/g, '_');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
+        }
+      } catch (error) {
+        console.error('文件名解码错误:', error);
+        // 如果解码失败，使用原始文件名
+        originalFilename = '未命名文件_' + file.id;
+      }
+
+      // 移除扩展名
+      const fileNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, "");
+      const fileDir = path.join(batchTempDir, fileNameWithoutExt);
+      fs.mkdirSync(fileDir, { recursive: true });
+
+      // 获取文件的结果目录
+      const resultsDir = path.join(__dirname, '../../uploads/results', file.id, 'auto');
+
+      if (fs.existsSync(resultsDir)) {
+        // 复制所有结果文件到批量下载目录
+        const files = fs.readdirSync(resultsDir);
+        for (const fileName of files) {
+          const srcPath = path.join(resultsDir, fileName);
+          const destPath = path.join(fileDir, fileName);
+
+          // 如果是目录（如images目录），递归复制
+          if (fs.statSync(srcPath).isDirectory()) {
+            fs.mkdirSync(destPath, { recursive: true });
+            const subFiles = fs.readdirSync(srcPath);
+            for (const subFile of subFiles) {
+              fs.copyFileSync(
+                path.join(srcPath, subFile),
+                path.join(destPath, subFile)
+              );
+            }
+          } else {
+            fs.copyFileSync(srcPath, destPath);
+          }
+        }
+      }
+    }
+
+    // 创建批量下载的ZIP文件
+    const zipFilePath = path.join(os.tmpdir(), `${batchId}_batch_download.zip`);
+    const output = fs.createWriteStream(zipFilePath);
+    const archive = archiver('zip', {
+      zlib: { level: 9 },
+    });
+
+    // 监听错误
+    archive.on("error", (err) => {
+      console.error("创建ZIP文件时出错:", err);
+      return res.status(500).json({
+        success: false,
+        message: "创建ZIP文件时出错",
+      });
+    });
+
+    // 完成时发送文件
+    output.on("close", () => {
+      res.download(zipFilePath, "批量下载结果.zip", (err) => {
+        if (err) {
+          console.error("发送ZIP文件时出错:", err);
+        }
+
+        // 清理临时文件
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(zipFilePath);
+            fs.rmSync(batchTempDir, { recursive: true, force: true });
+          } catch (e) {
+            console.error("清理临时文件时出错:", e);
+          }
+        }, 1000);
+      });
+    });
+
+    // 将目录添加到ZIP
+    archive.pipe(output);
+    archive.directory(batchTempDir, false);
+    archive.finalize();
+  } catch (error) {
+    console.error("批量下载文件时出错:", error);
+    res.status(500).json({
+      success: false,
+      message: "批量下载文件时出错",
       error: error.message
     });
   }

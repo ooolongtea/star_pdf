@@ -32,7 +32,7 @@
         @dragleave.prevent="isDragging = false"
         @drop.prevent="onFileDrop"
       >
-        <div v-if="!selectedFile">
+        <div v-if="selectedFiles.length === 0">
           <svg
             class="mx-auto h-12 w-12 text-gray-400"
             fill="none"
@@ -55,6 +55,7 @@
                 class="hidden"
                 accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.png"
                 @change="onFileChange"
+                multiple
               />
             </label>
           </p>
@@ -64,48 +65,90 @@
           </p>
           <p class="mt-1 text-xs text-gray-500">文件大小限制: 50MB</p>
         </div>
-        <div v-else class="flex items-center justify-between">
-          <div class="flex items-center">
-            <svg
-              class="h-8 w-8 text-blue-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+        <div v-else class="w-full">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="text-sm font-medium text-gray-700">
+              已选择 {{ selectedFiles.length }} 个文件
+            </h3>
+            <button
+              @click="clearFiles"
+              class="text-red-600 hover:text-red-800 focus:outline-none text-sm"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              ></path>
-            </svg>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-900">
-                {{ selectedFile.name }}
-              </p>
-              <p class="text-xs text-gray-500">
-                {{ formatFileSize(selectedFile.size) }}
-              </p>
-            </div>
+              清除全部
+            </button>
           </div>
-          <button
-            @click="selectedFile = null"
-            class="text-red-600 hover:text-red-800 focus:outline-none"
+
+          <div
+            class="max-h-60 overflow-y-auto border border-gray-200 rounded-md"
           >
-            <svg
-              class="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <ul class="divide-y divide-gray-200">
+              <li
+                v-for="(file, index) in selectedFiles"
+                :key="index"
+                class="px-4 py-3 flex items-center justify-between"
+              >
+                <div class="flex items-center">
+                  <svg
+                    class="h-6 w-6 text-blue-500 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    ></path>
+                  </svg>
+                  <div class="ml-3 truncate">
+                    <p
+                      class="text-sm font-medium text-gray-900 truncate"
+                      :title="file.name"
+                    >
+                      {{ file.name }}
+                    </p>
+                    <p class="text-xs text-gray-500">
+                      {{ formatFileSize(file.size) }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  @click="removeFile(index)"
+                  class="text-red-600 hover:text-red-800 focus:outline-none ml-2"
+                >
+                  <svg
+                    class="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    ></path>
+                  </svg>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div class="mt-3 flex justify-end">
+            <label
+              class="cursor-pointer px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 focus:outline-none"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              ></path>
-            </svg>
-          </button>
+              <span>添加更多文件</span>
+              <input
+                type="file"
+                class="hidden"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.png"
+                @change="onFileChange"
+                multiple
+              />
+            </label>
+          </div>
         </div>
       </div>
 
@@ -120,11 +163,12 @@
       <!-- 转换按钮 -->
       <div class="flex justify-center">
         <button
-          @click="convertFile"
+          @click="convertFiles"
           class="px-6 py-3 bg-blue-600 text-white font-medium rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
-          :disabled="!selectedFile || isConverting"
+          :disabled="selectedFiles.length === 0 || isConverting"
           :class="{
-            'opacity-50 cursor-not-allowed': !selectedFile || isConverting,
+            'opacity-50 cursor-not-allowed':
+              selectedFiles.length === 0 || isConverting,
           }"
         >
           <span v-if="isConverting" class="flex items-center">
@@ -147,154 +191,187 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            正在转换...
+            正在转换 ({{ convertedCount }}/{{ selectedFiles.length }})...
           </span>
-          <span v-else>开始转换</span>
+          <span v-else
+            >开始转换
+            {{
+              selectedFiles.length > 1 ? `(${selectedFiles.length}个文件)` : ""
+            }}</span
+          >
         </button>
       </div>
 
       <!-- 结果区域 -->
-      <div v-if="conversionResult" class="mt-8 border-t pt-6">
+      <div v-if="conversionResults.length > 0" class="mt-8 border-t pt-6">
         <h2 class="text-lg font-medium text-gray-800 mb-3">转换结果</h2>
 
         <div
-          v-if="conversionError"
-          class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md"
+          v-if="hasErrors"
+          class="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md mb-4"
         >
-          <p class="font-medium">转换失败</p>
-          <p class="text-sm">{{ conversionError }}</p>
+          <p class="font-medium">部分文件转换失败</p>
+          <p class="text-sm">部分文件转换过程中出现错误，请查看详细结果。</p>
         </div>
 
-        <div v-else>
-          <div
-            class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-4"
+        <div
+          v-else
+          class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-4"
+        >
+          <p class="font-medium">转换成功</p>
+          <p class="text-sm">所有文件已成功转换，您可以下载或查看结果。</p>
+        </div>
+
+        <!-- 批量操作按钮 -->
+        <div
+          v-if="conversionResults.length > 1"
+          class="mb-4 flex flex-wrap gap-3"
+        >
+          <button
+            @click="downloadAllSelectedResults"
+            class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            <p class="font-medium">转换成功</p>
-            <p class="text-sm">文件已成功转换，您可以下载或查看结果。</p>
-          </div>
-
-          <div class="flex flex-wrap gap-3">
-            <a
-              :href="conversionResult.markdownUrl"
-              download
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            <svg
+              class="mr-2 h-5 w-5 text-gray-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg
-                class="mr-2 h-5 w-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                ></path>
-              </svg>
-              下载 Markdown
-            </a>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L7 8m4-4v12"
+              ></path>
+            </svg>
+            批量下载所有结果
+          </button>
+        </div>
 
-            <button
-              @click="downloadAllResults(conversionResult.fileId)"
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg
-                class="mr-2 h-5 w-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+        <!-- 结果列表 -->
+        <div class="space-y-4">
+          <div
+            v-for="(result, index) in conversionResults"
+            :key="index"
+            class="border rounded-lg p-4"
+            :class="{
+              'border-red-200 bg-red-50': result.error,
+              'border-gray-200': !result.error,
+            }"
+          >
+            <div class="flex justify-between items-start mb-2">
+              <h3
+                class="text-md font-medium text-gray-800 truncate max-w-md"
+                :title="result.originalFilename"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L7 8m4-4v12"
-                ></path>
-              </svg>
-              下载所有文件
-            </button>
+                {{ result.originalFilename }}
+              </h3>
+              <span
+                class="px-2 py-1 text-xs font-semibold rounded-full"
+                :class="{
+                  'bg-green-100 text-green-800': !result.error,
+                  'bg-red-100 text-red-800': result.error,
+                }"
+              >
+                {{ result.error ? "失败" : "成功" }}
+              </span>
+            </div>
 
-            <button
-              @click="showMarkdownPreview = true"
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg
-                class="mr-2 h-5 w-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                ></path>
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                ></path>
-              </svg>
-              预览 Markdown
-            </button>
+            <div v-if="result.error" class="text-sm text-red-600 mb-2">
+              {{ result.error }}
+            </div>
 
-            <a
-              v-if="
-                conversionResult.extractedFormulas &&
-                conversionResult.extractedFormulas.length > 0
-              "
-              :href="conversionResult.formulasUrl"
-              download
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg
-                class="mr-2 h-5 w-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div v-else class="flex flex-wrap gap-2">
+              <a
+                v-if="result.markdownUrl"
+                :href="result.markdownUrl"
+                download
+                class="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                ></path>
-              </svg>
-              下载提取的化学式
-            </a>
+                <svg
+                  class="mr-1 h-4 w-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  ></path>
+                </svg>
+                下载 Markdown
+              </a>
 
-            <button
-              v-if="
-                conversionResult.extractedFormulas &&
-                conversionResult.extractedFormulas.length > 0
-              "
-              @click="showFormulasPreview = true"
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg
-                class="mr-2 h-5 w-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+              <button
+                @click="downloadAllResults(result.fileId)"
+                class="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                ></path>
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                ></path>
-              </svg>
-              查看提取的化学式
-            </button>
+                <svg
+                  class="mr-1 h-4 w-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L7 8m4-4v12"
+                  ></path>
+                </svg>
+                下载所有文件
+              </button>
+
+              <button
+                @click="previewMarkdown(result)"
+                class="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+              >
+                <svg
+                  class="mr-1 h-4 w-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  ></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                  ></path>
+                </svg>
+                预览
+              </button>
+
+              <a
+                v-if="result.formulasUrl"
+                :href="result.formulasUrl"
+                download
+                class="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+              >
+                <svg
+                  class="mr-1 h-4 w-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  ></path>
+                </svg>
+                下载化学式
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -312,22 +389,67 @@
           class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
         >
           <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <div class="sm:flex sm:items-start">
-              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  Markdown 预览
-                </h3>
-                <div class="bg-gray-50 p-4 rounded-md overflow-auto max-h-96">
-                  <pre class="text-sm text-gray-800 whitespace-pre-wrap">{{
-                    markdownContent
-                  }}</pre>
-                </div>
+            <div class="flex justify-between items-center mb-4">
+              <h3
+                class="text-lg leading-6 font-medium text-gray-900 truncate max-w-2xl"
+                :title="previewingFile?.originalFilename"
+              >
+                {{ previewingFile?.originalFilename || "Markdown 预览" }}
+              </h3>
+              <button
+                @click="closePreview"
+                class="text-gray-400 hover:text-gray-500 focus:outline-none"
+              >
+                <svg
+                  class="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+
+            <div v-if="loadingPreview" class="flex justify-center py-8">
+              <div
+                class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"
+              ></div>
+            </div>
+            <div
+              v-else-if="previewError"
+              class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md"
+            >
+              <p class="font-medium">加载失败</p>
+              <p class="text-sm">{{ previewError }}</p>
+            </div>
+            <div v-else>
+              <!-- 使用v-md-editor显示Markdown内容 -->
+              <v-md-editor
+                v-if="markdownContent"
+                v-model="markdownContent"
+                mode="preview"
+                class="markdown-preview max-h-[60vh] overflow-auto"
+                :preview-theme="'github'"
+              ></v-md-editor>
+
+              <!-- 如果没有内容显示提示 -->
+              <div
+                v-else
+                class="bg-gray-50 p-4 rounded-md text-center text-gray-500"
+              >
+                无内容可预览
               </div>
             </div>
           </div>
           <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
             <button
-              @click="showMarkdownPreview = false"
+              @click="closePreview"
               class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
             >
               关闭
@@ -349,67 +471,106 @@
           class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
         >
           <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <div class="sm:flex sm:items-start">
-              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
-                  提取的化学式
-                </h3>
-                <div class="overflow-auto max-h-96">
-                  <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                      <tr>
-                        <th
-                          scope="col"
-                          class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          序号
-                        </th>
-                        <th
-                          scope="col"
-                          class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          化学式
-                        </th>
-                        <th
-                          scope="col"
-                          class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          页码
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                      <tr
-                        v-for="(
-                          formula, index
-                        ) in conversionResult.extractedFormulas"
-                        :key="index"
-                      >
-                        <td
-                          class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
-                        >
-                          {{ index + 1 }}
-                        </td>
-                        <td
-                          class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
-                        >
-                          {{ formula.formula }}
-                        </td>
-                        <td
-                          class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
-                        >
-                          {{ formula.page }}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div class="flex justify-between items-center mb-4">
+              <h3
+                class="text-lg leading-6 font-medium text-gray-900 truncate max-w-2xl"
+                :title="previewingFile?.originalFilename"
+              >
+                {{ previewingFile?.originalFilename || "提取的化学式" }}
+              </h3>
+              <button
+                @click="closeFormulaPreview"
+                class="text-gray-400 hover:text-gray-500 focus:outline-none"
+              >
+                <svg
+                  class="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+
+            <div v-if="loadingFormulas" class="flex justify-center py-8">
+              <div
+                class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"
+              ></div>
+            </div>
+            <div
+              v-else-if="formulasError"
+              class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md"
+            >
+              <p class="font-medium">加载失败</p>
+              <p class="text-sm">{{ formulasError }}</p>
+            </div>
+            <div
+              v-else-if="extractedFormulas && extractedFormulas.length > 0"
+              class="overflow-auto max-h-[60vh]"
+            >
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th
+                      scope="col"
+                      class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      序号
+                    </th>
+                    <th
+                      scope="col"
+                      class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      化学式
+                    </th>
+                    <th
+                      scope="col"
+                      class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      页码
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="(formula, index) in extractedFormulas"
+                    :key="index"
+                  >
+                    <td
+                      class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                    >
+                      {{ index + 1 }}
+                    </td>
+                    <td
+                      class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
+                    >
+                      {{ formula.formula }}
+                    </td>
+                    <td
+                      class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                    >
+                      {{ formula.page }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div
+              v-else
+              class="bg-gray-50 p-4 rounded-md text-center text-gray-500"
+            >
+              未找到化学式
             </div>
           </div>
           <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
             <button
-              @click="showFormulasPreview = false"
+              @click="closeFormulaPreview"
               class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
             >
               关闭
@@ -427,7 +588,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useStore } from "vuex";
 import axios from "axios";
 import PdfHistory from "@/components/PdfHistory.vue";
@@ -448,58 +609,114 @@ export default {
     const isTestingConnection = ref(false);
 
     // 文件上传相关
-    const selectedFile = ref(null);
+    const selectedFiles = ref([]);
     const isDragging = ref(false);
 
     // 转换选项 (使用默认设置)
 
     // 转换状态和结果
     const isConverting = ref(false);
-    const conversionResult = ref(null);
-    const conversionError = ref(null);
+    const conversionResults = ref([]);
+    const convertedCount = ref(0);
+    const hasErrors = computed(() =>
+      conversionResults.value.some((result) => result.error)
+    );
 
     // 预览相关
     const showMarkdownPreview = ref(false);
     const showFormulasPreview = ref(false);
     const markdownContent = ref("");
+    const previewingFile = ref(null);
+    const loadingPreview = ref(false);
+    const previewError = ref(null);
+    const extractedFormulas = ref([]);
+    const loadingFormulas = ref(false);
+    const formulasError = ref(null);
 
     // 处理文件选择
     const onFileChange = (event) => {
-      const file = event.target.files[0];
-      if (file) {
-        // 检查文件大小是否超过50MB
-        const fileSizeInMB = file.size / (1024 * 1024);
-        if (fileSizeInMB > 50) {
-          store.dispatch(
-            "setError",
-            `文件过大（${fileSizeInMB.toFixed(
-              2
-            )}MB），超过了50MB的限制。请上传更小的文件。`
-          );
-          return;
+      const files = Array.from(event.target.files);
+      if (files.length > 0) {
+        // 检查每个文件的大小
+        const oversizedFiles = [];
+        const validFiles = [];
+
+        files.forEach((file) => {
+          const fileSizeInMB = file.size / (1024 * 1024);
+          if (fileSizeInMB > 50) {
+            oversizedFiles.push({
+              name: file.name,
+              size: fileSizeInMB.toFixed(2),
+            });
+          } else {
+            validFiles.push(file);
+          }
+        });
+
+        // 添加有效文件到选择列表
+        if (validFiles.length > 0) {
+          selectedFiles.value = [...selectedFiles.value, ...validFiles];
         }
-        selectedFile.value = file;
+
+        // 显示错误信息（如果有）
+        if (oversizedFiles.length > 0) {
+          const errorMessage =
+            oversizedFiles.length === 1
+              ? `文件 ${oversizedFiles[0].name}（${oversizedFiles[0].size}MB）超过了50MB的限制。`
+              : `${oversizedFiles.length} 个文件超过了50MB的限制，已被忽略。`;
+
+          store.dispatch("setError", errorMessage);
+        }
       }
     };
 
     // 处理文件拖放
     const onFileDrop = (event) => {
       isDragging.value = false;
-      const file = event.dataTransfer.files[0];
-      if (file) {
-        // 检查文件大小是否超过50MB
-        const fileSizeInMB = file.size / (1024 * 1024);
-        if (fileSizeInMB > 50) {
-          store.dispatch(
-            "setError",
-            `文件过大（${fileSizeInMB.toFixed(
-              2
-            )}MB），超过了50MB的限制。请上传更小的文件。`
-          );
-          return;
+      const files = Array.from(event.dataTransfer.files);
+
+      if (files.length > 0) {
+        // 检查每个文件的大小
+        const oversizedFiles = [];
+        const validFiles = [];
+
+        files.forEach((file) => {
+          const fileSizeInMB = file.size / (1024 * 1024);
+          if (fileSizeInMB > 50) {
+            oversizedFiles.push({
+              name: file.name,
+              size: fileSizeInMB.toFixed(2),
+            });
+          } else {
+            validFiles.push(file);
+          }
+        });
+
+        // 添加有效文件到选择列表
+        if (validFiles.length > 0) {
+          selectedFiles.value = [...selectedFiles.value, ...validFiles];
         }
-        selectedFile.value = file;
+
+        // 显示错误信息（如果有）
+        if (oversizedFiles.length > 0) {
+          const errorMessage =
+            oversizedFiles.length === 1
+              ? `文件 ${oversizedFiles[0].name}（${oversizedFiles[0].size}MB）超过了50MB的限制。`
+              : `${oversizedFiles.length} 个文件超过了50MB的限制，已被忽略。`;
+
+          store.dispatch("setError", errorMessage);
+        }
       }
+    };
+
+    // 移除单个文件
+    const removeFile = (index) => {
+      selectedFiles.value.splice(index, 1);
+    };
+
+    // 清除所有文件
+    const clearFiles = () => {
+      selectedFiles.value = [];
     };
 
     // 格式化文件大小
@@ -558,18 +775,12 @@ export default {
       testConnection();
     });
 
-    // 转换文件
-    const convertFile = async () => {
-      if (!selectedFile.value) return;
-
-      isConverting.value = true;
-      conversionResult.value = null;
-      conversionError.value = null;
-
+    // 转换单个文件
+    const convertSingleFile = async (file) => {
       try {
         // 创建 FormData 对象
         const formData = new FormData();
-        formData.append("file", selectedFile.value);
+        formData.append("file", file);
 
         // 发送请求
         const response = await axios.post("/api/pdf/convert", formData, {
@@ -580,38 +791,90 @@ export default {
         });
 
         if (response.data.success) {
-          conversionResult.value = response.data.data;
-
-          // 获取 Markdown 内容用于预览
-          if (conversionResult.value.markdownUrl) {
-            const markdownResponse = await axios.get(
-              conversionResult.value.markdownUrl
-            );
-            markdownContent.value = markdownResponse.data;
-          }
-
-          store.dispatch("setNotification", {
-            type: "success",
-            message: "文件转换成功！",
-          });
+          // 添加原始文件名到结果中
+          return {
+            ...response.data.data,
+            originalFilename: file.name,
+            error: null,
+          };
         } else {
-          conversionError.value =
-            response.data.message || "转换失败，请稍后重试";
-          store.dispatch("setError", conversionError.value);
+          return {
+            originalFilename: file.name,
+            error: response.data.message || "转换失败，请稍后重试",
+          };
         }
       } catch (error) {
-        console.error("文件转换错误:", error);
-        conversionError.value =
-          error.response?.data?.message || "转换失败，请稍后重试";
-        store.dispatch("setError", conversionError.value);
+        console.error(`文件 ${file.name} 转换错误:`, error);
+        return {
+          originalFilename: file.name,
+          error: error.response?.data?.message || "转换失败，请稍后重试",
+        };
+      }
+    };
+
+    // 批量转换文件
+    const convertFiles = async () => {
+      if (selectedFiles.value.length === 0) return;
+
+      isConverting.value = true;
+      conversionResults.value = [];
+      convertedCount.value = 0;
+
+      try {
+        // 逐个转换文件
+        for (const file of selectedFiles.value) {
+          const result = await convertSingleFile(file);
+          conversionResults.value.push(result);
+          convertedCount.value++;
+        }
+
+        // 显示成功或部分成功的通知
+        const successCount = conversionResults.value.filter(
+          (r) => !r.error
+        ).length;
+        const errorCount = conversionResults.value.length - successCount;
+
+        if (errorCount === 0) {
+          store.dispatch("setNotification", {
+            type: "success",
+            message: `所有 ${successCount} 个文件转换成功！`,
+          });
+        } else if (successCount > 0) {
+          store.dispatch("setNotification", {
+            type: "warning",
+            message: `${successCount} 个文件转换成功，${errorCount} 个文件失败。`,
+          });
+        } else {
+          store.dispatch("setError", "所有文件转换失败，请检查错误信息。");
+        }
+      } catch (error) {
+        console.error("批量转换错误:", error);
+        store.dispatch("setError", "批量转换过程中发生错误，请稍后重试。");
       } finally {
         isConverting.value = false;
       }
     };
 
-    // 下载所有结果
+    // 下载单个文件的所有结果
     const downloadAllResults = (fileId) => {
       const token = store.getters["auth/getToken"];
+
+      // 查找对应的文件信息，以获取原始文件名
+      const result = conversionResults.value.find((r) => r.fileId === fileId);
+      let fileName = "结果文件.zip";
+
+      // 如果找到文件信息，使用原始文件名
+      if (result && result.originalFilename) {
+        // 移除扩展名，添加结果文件后缀
+        const fileNameWithoutExt = result.originalFilename.replace(
+          /\.[^/.]+$/,
+          ""
+        );
+        // 确保文件名不包含非法字符
+        const safeFileName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, "_");
+        fileName = `${safeFileName}_结果文件.zip`;
+      }
+
       // 创建一个临时链接元素
       const a = document.createElement("a");
       a.style.display = "none";
@@ -632,11 +895,7 @@ export default {
         .then((blob) => {
           const url = window.URL.createObjectURL(blob);
           a.href = url;
-          a.download = `${
-            selectedFile.value
-              ? selectedFile.value.name.replace(/\.[^/.]+$/, "")
-              : "download"
-          }_all_files.zip`;
+          a.download = fileName;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -648,6 +907,142 @@ export default {
         });
     };
 
+    // 批量下载所有选中文件的结果
+    const downloadAllSelectedResults = async () => {
+      // 获取所有成功转换的文件ID
+      const successfulResults = conversionResults.value.filter((r) => !r.error);
+
+      if (successfulResults.length === 0) {
+        store.dispatch("setError", "没有可下载的文件");
+        return;
+      }
+
+      // 如果只有一个文件，直接下载
+      if (successfulResults.length === 1) {
+        downloadAllResults(successfulResults[0].fileId);
+        return;
+      }
+
+      store.dispatch("setNotification", {
+        type: "info",
+        message: "正在准备下载多个文件，请稍候...",
+      });
+
+      try {
+        // 使用批量下载API
+        const token = store.getters["auth/getToken"];
+        const fileIds = successfulResults.map((r) => r.fileId);
+
+        // 创建一个隐藏的表单，用于提交POST请求
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = "/api/pdf/files/batch-download";
+        form.style.display = "none";
+
+        // 添加文件ID列表
+        const fileIdsInput = document.createElement("input");
+        fileIdsInput.name = "fileIds";
+        fileIdsInput.value = JSON.stringify(fileIds);
+        form.appendChild(fileIdsInput);
+
+        // 添加认证令牌
+        const tokenInput = document.createElement("input");
+        tokenInput.name = "token";
+        tokenInput.value = token;
+        form.appendChild(tokenInput);
+
+        // 添加表单到文档并提交
+        document.body.appendChild(form);
+
+        // 创建一个iframe来接收响应
+        const iframe = document.createElement("iframe");
+        iframe.name = "download-iframe";
+        iframe.style.display = "none";
+        document.body.appendChild(iframe);
+
+        // 设置表单目标为iframe
+        form.target = "download-iframe";
+
+        // 提交表单
+        form.submit();
+
+        // 清理
+        setTimeout(() => {
+          document.body.removeChild(form);
+          document.body.removeChild(iframe);
+        }, 5000);
+      } catch (error) {
+        console.error("批量下载错误:", error);
+        store.dispatch("setError", "批量下载失败，请稍后重试");
+
+        // 回退到逐个下载
+        for (const result of successfulResults) {
+          await new Promise((resolve) => {
+            setTimeout(() => {
+              downloadAllResults(result.fileId);
+              resolve();
+            }, 1000); // 间隔1秒下载，避免浏览器阻止多个下载
+          });
+        }
+      }
+    };
+
+    // 预览Markdown内容
+    const previewMarkdown = async (result) => {
+      if (!result || !result.markdownUrl) return;
+
+      showMarkdownPreview.value = true;
+      previewingFile.value = result;
+      loadingPreview.value = true;
+      previewError.value = null;
+      markdownContent.value = "";
+
+      try {
+        const response = await axios.get(result.markdownUrl);
+        markdownContent.value = response.data;
+      } catch (error) {
+        console.error("加载Markdown内容错误:", error);
+        previewError.value = "加载Markdown内容失败，请稍后重试";
+      } finally {
+        loadingPreview.value = false;
+      }
+    };
+
+    // 预览化学式
+    const previewFormulas = async (result) => {
+      if (!result || !result.formulasUrl) return;
+
+      showFormulasPreview.value = true;
+      previewingFile.value = result;
+      loadingFormulas.value = true;
+      formulasError.value = null;
+      extractedFormulas.value = [];
+
+      try {
+        const response = await axios.get(result.formulasUrl);
+        extractedFormulas.value = response.data || [];
+      } catch (error) {
+        console.error("加载化学式内容错误:", error);
+        formulasError.value = "加载化学式内容失败，请稍后重试";
+      } finally {
+        loadingFormulas.value = false;
+      }
+    };
+
+    // 关闭预览
+    const closePreview = () => {
+      showMarkdownPreview.value = false;
+      previewingFile.value = null;
+      markdownContent.value = "";
+    };
+
+    // 关闭化学式预览
+    const closeFormulaPreview = () => {
+      showFormulasPreview.value = false;
+      previewingFile.value = null;
+      extractedFormulas.value = [];
+    };
+
     return {
       // 服务器状态
       serverStatus,
@@ -655,27 +1050,41 @@ export default {
       testConnection,
 
       // 文件上传
-      selectedFile,
+      selectedFiles,
       isDragging,
       onFileChange,
       onFileDrop,
       formatFileSize,
+      removeFile,
+      clearFiles,
 
       // 转换选项已移除 (使用默认设置)
 
       // 转换状态和结果
       isConverting,
-      conversionResult,
-      conversionError,
-      convertFile,
+      convertFiles,
+      conversionResults,
+      convertedCount,
+      hasErrors,
 
       // 预览相关
       showMarkdownPreview,
       showFormulasPreview,
       markdownContent,
+      previewingFile,
+      loadingPreview,
+      previewError,
+      extractedFormulas,
+      loadingFormulas,
+      formulasError,
+      previewMarkdown,
+      previewFormulas,
+      closePreview,
+      closeFormulaPreview,
 
       // 下载相关
       downloadAllResults,
+      downloadAllSelectedResults,
     };
   },
 };

@@ -3,20 +3,24 @@ const User = require('../models/user.model');
 // 验证令牌中间件
 exports.verifyToken = async (req, res, next) => {
   try {
+    let token;
+
     // 从请求头中获取令牌
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: '未提供授权令牌'
-      });
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
     }
 
-    const token = authHeader.split(' ')[1];
+    // 如果请求头中没有令牌，尝试从请求体中获取
+    if (!token && req.body && req.body.token) {
+      token = req.body.token;
+    }
+
+    // 如果仍然没有令牌，返回错误
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: '无效的授权令牌格式'
+        message: '未提供授权令牌'
       });
     }
 

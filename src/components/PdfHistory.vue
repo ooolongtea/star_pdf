@@ -33,131 +33,212 @@
       <p class="mt-2">暂无转换记录</p>
     </div>
 
-    <div v-else class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
-          <tr>
-            <th
-              scope="col"
-              class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-            >
-              文件名
-            </th>
-            <th
-              scope="col"
-              class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-            >
-              状态
-            </th>
-            <th
-              scope="col"
-              class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-            >
-              转换时间
-            </th>
-            <th
-              scope="col"
-              class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-            >
-              有效期
-            </th>
-            <th
-              scope="col"
-              class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-            >
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody class="bg-white divide-y divide-gray-200">
-          <tr
-            v-for="file in files"
-            :key="file.id"
-            :class="{ 'bg-red-50': file.isExpired }"
+    <div v-else>
+      <div class="mb-4 flex justify-between items-center">
+        <div class="flex space-x-2">
+          <button
+            v-if="selectedFiles.length > 0"
+            @click="confirmDeleteSelected"
+            class="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
           >
-            <td class="px-4 py-3 whitespace-nowrap">
-              <div class="flex items-center">
-                <div
-                  class="flex-shrink-0 h-8 w-8 flex items-center justify-center"
-                >
-                  <svg
-                    class="h-5 w-5 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    ></path>
-                  </svg>
-                </div>
-                <div class="ml-2">
+            <svg
+              class="mr-1.5 h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              ></path>
+            </svg>
+            删除选中 ({{ selectedFiles.length }})
+          </button>
+
+          <button
+            v-if="selectedFiles.length > 0"
+            @click="downloadSelectedFiles"
+            class="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            <svg
+              class="mr-1.5 h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              ></path>
+            </svg>
+            下载选中 ({{ selectedFiles.length }})
+          </button>
+        </div>
+
+        <div>
+          <button
+            v-if="selectedFiles.length > 0"
+            @click="clearSelection"
+            class="text-sm text-gray-500 hover:text-gray-700"
+          >
+            清除选择
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  :checked="isAllSelected"
+                  @change="toggleSelectAll"
+                />
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                文件名
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                状态
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                转换时间
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                有效期
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                操作
+              </th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <tr
+              v-for="file in files"
+              :key="file.id"
+              :class="{
+                'bg-red-50': file.isExpired,
+                'bg-blue-50': isFileSelected(file.id),
+              }"
+            >
+              <td class="px-4 py-3 whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  :checked="isFileSelected(file.id)"
+                  @change="toggleFileSelection(file.id)"
+                />
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                <div class="flex items-center">
                   <div
-                    class="text-sm font-medium text-gray-900 truncate max-w-xs"
-                    :title="file.originalFilename"
+                    class="flex-shrink-0 h-8 w-8 flex items-center justify-center"
                   >
-                    {{ file.originalFilename }}
+                    <svg
+                      class="h-5 w-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      ></path>
+                    </svg>
                   </div>
-                  <div class="text-xs text-gray-500">
-                    {{ formatFileSize(file.resultsSize || 0) }}
+                  <div class="ml-2">
+                    <div
+                      class="text-sm font-medium text-gray-900 truncate max-w-xs"
+                      :title="file.originalFilename"
+                    >
+                      {{ file.originalFilename }}
+                    </div>
+                    <div class="text-xs text-gray-500">
+                      {{ formatFileSize(file.resultsSize || 0) }}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </td>
-            <td class="px-4 py-3 whitespace-nowrap">
-              <span
-                class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                :class="{
-                  'bg-green-100 text-green-800': file.status === 'completed',
-                  'bg-yellow-100 text-yellow-800': file.status === 'processing',
-                  'bg-red-100 text-red-800': file.status === 'failed',
-                }"
-              >
-                {{ getStatusText(file.status) }}
-              </span>
-            </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-              {{ formatDate(file.createdAt) }}
-            </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-              <span
-                v-if="file.expiresAt"
-                :class="{ 'text-red-500': file.isExpired }"
-              >
-                {{ file.isExpired ? "已过期" : formatDate(file.expiresAt) }}
-              </span>
-              <span v-else>永久</span>
-            </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
-              <div class="flex space-x-2">
-                <button
-                  v-if="file.status === 'completed'"
-                  @click="viewFile(file)"
-                  class="text-blue-600 hover:text-blue-900"
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                <span
+                  class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                  :class="{
+                    'bg-green-100 text-green-800': file.status === 'completed',
+                    'bg-yellow-100 text-yellow-800':
+                      file.status === 'processing',
+                    'bg-red-100 text-red-800': file.status === 'failed',
+                  }"
                 >
-                  查看
-                </button>
-                <button
-                  v-if="file.status === 'completed'"
-                  @click="downloadAllResults(file.id)"
-                  class="text-green-600 hover:text-green-900"
+                  {{ getStatusText(file.status) }}
+                </span>
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                {{ formatDate(file.createdAt) }}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                <span
+                  v-if="file.expiresAt"
+                  :class="{ 'text-red-500': file.isExpired }"
                 >
-                  下载
-                </button>
-                <button
-                  @click="deleteFile(file.id)"
-                  class="text-red-600 hover:text-red-900"
-                >
-                  删除
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                  {{ file.isExpired ? "已过期" : formatDate(file.expiresAt) }}
+                </span>
+                <span v-else>永久</span>
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                <div class="flex space-x-2">
+                  <button
+                    v-if="file.status === 'completed'"
+                    @click="viewFile(file)"
+                    class="text-blue-600 hover:text-blue-900"
+                  >
+                    查看
+                  </button>
+                  <button
+                    v-if="file.status === 'completed'"
+                    @click="downloadAllResults(file.id)"
+                    class="text-green-600 hover:text-green-900"
+                  >
+                    下载
+                  </button>
+                  <button
+                    @click="deleteFile(file.id)"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 文件预览对话框 -->
@@ -304,7 +385,7 @@
 </template>
 
 <script>
-import { ref, onMounted, nextTick, watch } from "vue";
+import { ref, onMounted, nextTick, watch, computed } from "vue";
 import axios from "axios";
 import { useStore } from "vuex";
 
@@ -317,6 +398,9 @@ export default {
     const files = ref([]);
     const loading = ref(false);
     const error = ref(null);
+
+    // 选中的文件
+    const selectedFiles = ref([]);
 
     // 预览相关
     const showPreview = ref(false);
@@ -665,6 +749,172 @@ export default {
       }
     });
 
+    // 文件选择相关函数
+    const isFileSelected = (fileId) => {
+      return selectedFiles.value.includes(fileId);
+    };
+
+    const toggleFileSelection = (fileId) => {
+      const index = selectedFiles.value.indexOf(fileId);
+      if (index === -1) {
+        selectedFiles.value.push(fileId);
+      } else {
+        selectedFiles.value.splice(index, 1);
+      }
+    };
+
+    const isAllSelected = computed(() => {
+      return (
+        files.value.length > 0 &&
+        selectedFiles.value.length === files.value.length
+      );
+    });
+
+    const toggleSelectAll = () => {
+      if (isAllSelected.value) {
+        // 取消全选
+        selectedFiles.value = [];
+      } else {
+        // 全选
+        selectedFiles.value = files.value.map((file) => file.id);
+      }
+    };
+
+    const clearSelection = () => {
+      selectedFiles.value = [];
+    };
+
+    // 批量删除
+    const confirmDeleteSelected = () => {
+      if (selectedFiles.value.length === 0) return;
+
+      const count = selectedFiles.value.length;
+      if (confirm(`确定要删除选中的 ${count} 个文件吗？此操作不可恢复。`)) {
+        deleteSelectedFiles();
+      }
+    };
+
+    const deleteSelectedFiles = async () => {
+      if (selectedFiles.value.length === 0) return;
+
+      const filesToDelete = [...selectedFiles.value]; // 创建副本，避免在循环中修改原数组
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const fileId of filesToDelete) {
+        try {
+          const response = await axios.delete(`/api/pdf/files/${fileId}`, {
+            headers: {
+              Authorization: `Bearer ${store.getters["auth/getToken"]}`,
+            },
+          });
+
+          if (response.data.success) {
+            successCount++;
+            // 从选中列表中移除
+            const index = selectedFiles.value.indexOf(fileId);
+            if (index !== -1) {
+              selectedFiles.value.splice(index, 1);
+            }
+          } else {
+            errorCount++;
+          }
+        } catch (err) {
+          console.error(`删除文件 ${fileId} 错误:`, err);
+          errorCount++;
+        }
+      }
+
+      // 显示结果通知
+      if (errorCount === 0) {
+        store.dispatch("setNotification", {
+          type: "success",
+          message: `成功删除 ${successCount} 个文件`,
+        });
+      } else {
+        store.dispatch("setNotification", {
+          type: "warning",
+          message: `成功删除 ${successCount} 个文件，${errorCount} 个文件删除失败`,
+        });
+      }
+
+      // 重新加载文件列表
+      loadFiles();
+    };
+
+    // 批量下载
+    const downloadSelectedFiles = async () => {
+      if (selectedFiles.value.length === 0) return;
+
+      // 如果只选择了一个文件，直接下载
+      if (selectedFiles.value.length === 1) {
+        downloadAllResults(selectedFiles.value[0]);
+        return;
+      }
+
+      store.dispatch("setNotification", {
+        type: "info",
+        message: "正在准备下载多个文件，请稍候...",
+      });
+
+      try {
+        // 使用批量下载API
+        const token = store.getters["auth/getToken"];
+
+        // 创建一个隐藏的表单，用于提交POST请求
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = "/api/pdf/files/batch-download";
+        form.style.display = "none";
+
+        // 添加文件ID列表
+        const fileIdsInput = document.createElement("input");
+        fileIdsInput.name = "fileIds";
+        fileIdsInput.value = JSON.stringify(selectedFiles.value);
+        form.appendChild(fileIdsInput);
+
+        // 添加认证令牌
+        const tokenInput = document.createElement("input");
+        tokenInput.name = "token";
+        tokenInput.value = token;
+        form.appendChild(tokenInput);
+
+        // 添加表单到文档并提交
+        document.body.appendChild(form);
+
+        // 创建一个iframe来接收响应
+        const iframe = document.createElement("iframe");
+        iframe.name = "download-iframe";
+        iframe.style.display = "none";
+        document.body.appendChild(iframe);
+
+        // 设置表单目标为iframe
+        form.target = "download-iframe";
+
+        // 提交表单
+        form.submit();
+
+        // 清理
+        setTimeout(() => {
+          document.body.removeChild(form);
+          document.body.removeChild(iframe);
+        }, 5000);
+      } catch (error) {
+        console.error("批量下载错误:", error);
+        store.dispatch("setError", "批量下载失败，请稍后重试");
+
+        // 回退到逐个下载
+        for (const fileId of selectedFiles.value) {
+          await new Promise((resolve) => {
+            setTimeout(() => {
+              downloadAllResults(fileId);
+              resolve();
+            }, 1000); // 间隔1秒下载，避免浏览器阻止多个下载
+          });
+        }
+      }
+    };
+
     // 组件挂载时加载文件列表
     onMounted(() => {
       loadFiles();
@@ -680,12 +930,27 @@ export default {
       previewError,
       markdownContent,
       fileResults,
+      selectedFiles,
+      isAllSelected,
+
+      // 文件操作
       loadFiles,
       viewFile,
       closePreview,
       downloadAllResults,
       downloadSingleFile,
       deleteFile,
+
+      // 批量操作
+      isFileSelected,
+      toggleFileSelection,
+      toggleSelectAll,
+      clearSelection,
+      confirmDeleteSelected,
+      deleteSelectedFiles,
+      downloadSelectedFiles,
+
+      // 工具函数
       formatFileSize,
       formatDate,
       getStatusText,
