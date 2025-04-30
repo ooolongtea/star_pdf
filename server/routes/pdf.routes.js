@@ -3,14 +3,12 @@ const router = express.Router();
 const pdfController = require('../controllers/pdf.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 
-// 获取图片文件的路由（不需要认证）
+// 不需要认证的路由
 router.get('/files/:id/images/:imageName', pdfController.getImageFile);
+router.get('/test-connection', pdfController.testConnection);
 
 // 应用认证中间件（对其他所有路由）
 router.use(authMiddleware.verifyToken);
-
-// 测试与远程服务器的连接
-router.get('/test-connection', pdfController.testConnection);
 
 // PDF 转换路由
 router.post('/convert', pdfController.convertPdf);

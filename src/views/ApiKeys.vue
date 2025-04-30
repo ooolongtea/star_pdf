@@ -12,7 +12,9 @@
         </div>
 
         <!-- API密钥列表 -->
-        <div class="mt-6 overflow-hidden border-b border-gray-200 sm:rounded-lg">
+        <div
+          class="mt-6 overflow-hidden border-b border-gray-200 sm:rounded-lg"
+        >
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
               <tr>
@@ -47,7 +49,10 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
               <tr v-if="loading">
-                <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">
+                <td
+                  colspan="5"
+                  class="px-6 py-4 text-center text-sm text-gray-500"
+                >
                   <svg
                     class="animate-spin h-5 w-5 mx-auto text-blue-500"
                     xmlns="http://www.w3.org/2000/svg"
@@ -71,23 +76,28 @@
                 </td>
               </tr>
               <tr v-else-if="apiKeys.length === 0">
-                <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">
+                <td
+                  colspan="5"
+                  class="px-6 py-4 text-center text-sm text-gray-500"
+                >
                   暂无API密钥，请添加新的API密钥。
                 </td>
               </tr>
               <tr v-for="key in apiKeys" :key="key.id" class="hover:bg-gray-50">
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center">
-                    <div class="flex-shrink-0 h-10 w-10 flex items-center justify-center">
+                    <div
+                      class="flex-shrink-0 h-10 w-10 flex items-center justify-center"
+                    >
                       <img
                         v-if="key.model_name === 'qwen'"
-                        src="https://qianwen-res.oss-cn-beijing.aliyuncs.com/logo_qwen.png"
+                        src="/images/ai-logos/qwen.png"
                         alt="Qwen"
                         class="h-8 w-8"
                       />
                       <img
                         v-else-if="key.model_name === 'deepseek'"
-                        src="https://www.deepseek.com/images/logo.svg"
+                        src="/images/ai-logos/deepseek.png"
                         alt="DeepSeek"
                         class="h-8 w-8"
                       />
@@ -116,18 +126,24 @@
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="text-sm text-gray-900">
-                    {{ key.api_base_url || '默认' }}
+                    {{ key.api_base_url || "默认" }}
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   <span
                     class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                    :class="key.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                    :class="
+                      key.is_active
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    "
                   >
-                    {{ key.is_active ? '启用' : '禁用' }}
+                    {{ key.is_active ? "启用" : "禁用" }}
                   </span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <td
+                  class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
+                >
                   <button
                     @click="editApiKey(key)"
                     class="text-blue-600 hover:text-blue-900 mr-4"
@@ -222,7 +238,7 @@
                 class="text-lg leading-6 font-medium text-gray-900"
                 id="modal-title"
               >
-                {{ editingKey ? '编辑API密钥' : '添加新API密钥' }}
+                {{ editingKey ? "编辑API密钥" : "添加新API密钥" }}
               </h3>
               <div class="mt-4">
                 <form @submit.prevent="saveApiKey">
@@ -300,7 +316,9 @@
                     </div>
                   </div>
 
-                  <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                  <div
+                    class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense"
+                  >
                     <button
                       type="submit"
                       :disabled="loading"
@@ -327,7 +345,7 @@
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         ></path>
                       </svg>
-                      {{ editingKey ? '更新' : '添加' }}
+                      {{ editingKey ? "更新" : "添加" }}
                     </button>
                     <button
                       type="button"
@@ -356,27 +374,27 @@ export default {
   setup() {
     const store = useStore();
     const loading = computed(() => store.getters.isLoading);
-    
+
     const apiKeys = ref([]);
     const showAddModal = ref(false);
     const editingKey = ref(null);
-    
+
     const apiKeyForm = reactive({
       model_name: "",
       api_key: "",
       api_base_url: "",
-      is_active: true
+      is_active: true,
     });
 
     // 获取API密钥列表
     const fetchApiKeys = async () => {
       try {
-        const response = await fetch('/api/users/api-keys', {
+        const response = await fetch("/api/users/api-keys", {
           headers: {
-            'Authorization': `Bearer ${store.getters['auth/getToken']}`
-          }
+            Authorization: `Bearer ${store.getters["auth/getToken"]}`,
+          },
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
@@ -384,48 +402,48 @@ export default {
           }
         }
       } catch (error) {
-        console.error('获取API密钥失败:', error);
-        store.dispatch('setError', '获取API密钥失败，请稍后重试');
+        console.error("获取API密钥失败:", error);
+        store.dispatch("setError", "获取API密钥失败，请稍后重试");
       }
     };
 
     // 保存API密钥
     const saveApiKey = async () => {
       try {
-        store.dispatch('setLoading', true);
-        
-        const url = editingKey.value 
-          ? `/api/users/api-keys/${editingKey.value}` 
-          : '/api/users/api-keys';
-        
-        const method = editingKey.value ? 'PUT' : 'POST';
-        
+        store.dispatch("setLoading", true);
+
+        const url = editingKey.value
+          ? `/api/users/api-keys/${editingKey.value}`
+          : "/api/users/api-keys";
+
+        const method = editingKey.value ? "PUT" : "POST";
+
         const response = await fetch(url, {
           method,
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${store.getters['auth/getToken']}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${store.getters["auth/getToken"]}`,
           },
-          body: JSON.stringify(apiKeyForm)
+          body: JSON.stringify(apiKeyForm),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
             await fetchApiKeys();
             resetForm();
             showAddModal.value = false;
-            store.dispatch('setNotification', {
-              type: 'success',
-              message: editingKey.value ? 'API密钥已更新' : 'API密钥已添加'
+            store.dispatch("setNotification", {
+              type: "success",
+              message: editingKey.value ? "API密钥已更新" : "API密钥已添加",
             });
           }
         }
       } catch (error) {
-        console.error('保存API密钥失败:', error);
-        store.dispatch('setError', '保存API密钥失败，请稍后重试');
+        console.error("保存API密钥失败:", error);
+        store.dispatch("setError", "保存API密钥失败，请稍后重试");
       } finally {
-        store.dispatch('setLoading', false);
+        store.dispatch("setLoading", false);
       }
     };
 
@@ -433,41 +451,41 @@ export default {
     const editApiKey = (key) => {
       editingKey.value = key.id;
       apiKeyForm.model_name = key.model_name;
-      apiKeyForm.api_key = ''; // 不显示原密钥
-      apiKeyForm.api_base_url = key.api_base_url || '';
+      apiKeyForm.api_key = ""; // 不显示原密钥
+      apiKeyForm.api_base_url = key.api_base_url || "";
       apiKeyForm.is_active = key.is_active;
       showAddModal.value = true;
     };
 
     // 删除API密钥
     const deleteApiKey = async (id) => {
-      if (!confirm('确定要删除此API密钥吗？')) return;
-      
+      if (!confirm("确定要删除此API密钥吗？")) return;
+
       try {
-        store.dispatch('setLoading', true);
-        
+        store.dispatch("setLoading", true);
+
         const response = await fetch(`/api/users/api-keys/${id}`, {
-          method: 'DELETE',
+          method: "DELETE",
           headers: {
-            'Authorization': `Bearer ${store.getters['auth/getToken']}`
-          }
+            Authorization: `Bearer ${store.getters["auth/getToken"]}`,
+          },
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
             await fetchApiKeys();
-            store.dispatch('setNotification', {
-              type: 'success',
-              message: 'API密钥已删除'
+            store.dispatch("setNotification", {
+              type: "success",
+              message: "API密钥已删除",
             });
           }
         }
       } catch (error) {
-        console.error('删除API密钥失败:', error);
-        store.dispatch('setError', '删除API密钥失败，请稍后重试');
+        console.error("删除API密钥失败:", error);
+        store.dispatch("setError", "删除API密钥失败，请稍后重试");
       } finally {
-        store.dispatch('setLoading', false);
+        store.dispatch("setLoading", false);
       }
     };
 
@@ -483,21 +501,23 @@ export default {
     // 获取模型显示名称
     const getModelDisplayName = (modelName) => {
       const modelMap = {
-        'qwen': '通义千问 (Qwen)',
-        'deepseek': 'DeepSeek',
-        'baichuan': '百川 (Baichuan)',
-        'chatglm': '智谱 (ChatGLM)',
-        'other': '其他'
+        qwen: "通义千问 (Qwen)",
+        deepseek: "DeepSeek",
+        baichuan: "百川 (Baichuan)",
+        chatglm: "智谱 (ChatGLM)",
+        other: "其他",
       };
-      
+
       return modelMap[modelName] || modelName;
     };
 
     // 掩码API密钥
     const maskApiKey = (apiKey) => {
-      if (!apiKey) return '';
-      if (apiKey.length <= 8) return '********';
-      return apiKey.substring(0, 4) + '****' + apiKey.substring(apiKey.length - 4);
+      if (!apiKey) return "";
+      if (apiKey.length <= 8) return "********";
+      return (
+        apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length - 4)
+      );
     };
 
     onMounted(() => {
@@ -514,8 +534,8 @@ export default {
       editApiKey,
       deleteApiKey,
       getModelDisplayName,
-      maskApiKey
+      maskApiKey,
     };
-  }
+  },
 };
 </script>

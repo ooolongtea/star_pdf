@@ -14,7 +14,9 @@ const state = {
     serverUrl: 'http://localhost:8080',
     remoteMode: false,
     username: '',
-    defaultOutputDir: ''
+    defaultOutputDir: '',
+    mineruServerUrl: 'http://172.19.1.81:8010',
+    chemicalExtractionServerUrl: 'http://172.19.1.81:8011'
   }
 };
 

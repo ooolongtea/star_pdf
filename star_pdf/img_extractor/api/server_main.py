@@ -187,7 +187,7 @@ def main():
     """
     parser = argparse.ArgumentParser(description="启动专利图像提取API服务器")
     parser.add_argument('--host', type=str, default='0.0.0.0', help='服务器主机名')
-    parser.add_argument('--port', type=int, default=8080, help='服务器端口')
+    parser.add_argument('--port', type=int, default=8011, help='服务器端口')
     parser.add_argument('--data-dir', type=str, default=None, help='数据目录路径')
     parser.add_argument('--gpu-devices', type=str, default=None, help='GPU设备列表，以逗号分隔，例如 "cuda:0,cuda:1" 或 "0,1"')
     parser.add_argument('--connection-limit', type=int, default=500, help='最大连接数')

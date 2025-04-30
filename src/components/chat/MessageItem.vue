@@ -53,21 +53,19 @@
       </div>
       <div
         :class="[
-          'px-2.5 py-1 relative transform transition-all duration-200 flex items-center justify-center',
-          message.role === 'user'
-            ? 'bg-white text-gray-800 border border-gray-200 rounded-2xl rounded-tr-sm shadow-sm mr-10'
-            : 'bg-gray-50 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm',
+          'px-3 py-2 relative transform transition-all duration-200 flex items-center justify-center message-bubble',
+          message.role === 'user' ? 'user-message mr-10' : 'ai-message',
           message.isLoading ? 'animate-pulse' : '',
         ]"
       >
-        <!-- 复制按钮（悬停时显示） -->
+        <!-- 复制按钮（悬停时显示） - 更现代的设计 -->
         <div
           v-if="!message.isLoading && !message.isError"
-          class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out z-10"
+          class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out z-10"
         >
           <button
             @click="copyMessage"
-            class="p-1 rounded-full hover:bg-gray-200 focus:outline-none transform transition-transform duration-200 hover:scale-110 active:scale-95 text-gray-400 hover:text-gray-700"
+            class="p-1.5 rounded-md bg-white/80 backdrop-blur-sm shadow-sm hover:bg-gray-100 focus:outline-none transform transition-all duration-200 hover:scale-105 active:scale-95 text-gray-500 hover:text-gray-700 border border-gray-200"
             title="复制消息"
           >
             <svg
@@ -87,23 +85,16 @@
           </button>
         </div>
 
-        <!-- 消息内容 -->
+        <!-- 消息内容 - 更现代的加载动画 -->
         <div
           v-if="message.isLoading"
-          class="flex items-center justify-center space-x-1 w-full"
+          class="flex items-center justify-center space-x-1.5 w-full py-1"
         >
-          <div
-            class="h-2.5 w-2.5 bg-gray-400 rounded-full animate-bounce"
-            style="animation-delay: 0ms"
-          ></div>
-          <div
-            class="h-2.5 w-2.5 bg-gray-400 rounded-full animate-bounce"
-            style="animation-delay: 150ms"
-          ></div>
-          <div
-            class="h-2.5 w-2.5 bg-gray-400 rounded-full animate-bounce"
-            style="animation-delay: 300ms"
-          ></div>
+          <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
         </div>
         <div v-else class="w-full flex items-center justify-center">
           <div
@@ -280,13 +271,11 @@ export default {
 
       // 设置不同厂商的Logo路径
       if (providerLowerCase.includes("qwen")) {
-        modelLogo.value = window.location.origin + "/images/ai-logos/qwen.png";
+        modelLogo.value = "/images/ai-logos/qwen.png";
       } else if (providerLowerCase.includes("deepseek")) {
-        modelLogo.value =
-          window.location.origin + "/images/ai-logos/deepseek.png";
+        modelLogo.value = "/images/ai-logos/deepseek.png";
       } else if (providerLowerCase.includes("openai")) {
-        modelLogo.value =
-          window.location.origin + "/images/ai-logos/openai.png";
+        modelLogo.value = "/images/ai-logos/openai.png";
       } else if (
         providerLowerCase.includes("baidu") ||
         providerLowerCase.includes("ernie")
@@ -754,5 +743,43 @@ pre:hover .code-copy-button {
 .copy-notification.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* 打字动画点 */
+.typing-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.typing-dots span {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #a0aec0;
+  animation: typingAnimation 1.4s infinite ease-in-out both;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typingAnimation {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>

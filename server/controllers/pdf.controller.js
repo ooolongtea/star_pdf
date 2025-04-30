@@ -55,9 +55,12 @@ const upload = multer({
   }
 }).single('file');
 
-// 远程服务器配置
-const REMOTE_SERVER_URL = 'http://172.19.1.81:8010/predict';
-const REMOTE_SERVER_BASE_URL = 'http://172.19.1.81:8010';
+// 导入MinerU客户端工具
+const mineruClient = require('../utils/mineru_client');
+
+// 远程服务器配置（默认值，实际使用时会从用户设置中获取）
+const DEFAULT_MINERU_SERVER_URL = mineruClient.DEFAULT_MINERU_SERVER_URL;
+const DEFAULT_CHEMICAL_EXTRACTION_SERVER_URL = mineruClient.DEFAULT_CHEMICAL_EXTRACTION_SERVER_URL;
 
 // 创建数据库连接池
 const pool = mysql.createPool(dbConfig);
@@ -87,16 +90,24 @@ function calculateDirectorySize(dirPath) {
 }
 
 // 递归下载远程目录的函数
-async function downloadRemoteDirectory(remotePath, localPath, originalFilename = null) {
+async function downloadRemoteDirectory(remotePath, localPath, originalFilename = null, userId = null, serverBaseUrl = null) {
   // 创建本地目录
   if (!fs.existsSync(localPath)) {
     fs.mkdirSync(localPath, { recursive: true });
   }
 
   try {
+    // 如果没有提供服务器URL，尝试从用户设置中获取
+    let baseUrl = serverBaseUrl;
+    if (!baseUrl && userId) {
+      baseUrl = await mineruClient.getUserServerUrl(userId, 'mineru');
+    }
+    // 如果仍然没有URL，使用默认值
+    baseUrl = baseUrl || DEFAULT_MINERU_SERVER_URL;
+
     console.log(`获取远程目录列表: ${remotePath}`);
     // 获取远程目录列表
-    const response = await axios.get(`${REMOTE_SERVER_BASE_URL}/files/list?path=${encodeURIComponent(remotePath)}`, {
+    const response = await axios.get(`${baseUrl}/files/list?path=${encodeURIComponent(remotePath)}`, {
       timeout: 30000
     });
 
@@ -171,7 +182,7 @@ async function downloadRemoteDirectory(remotePath, localPath, originalFilename =
         const filePromise = (async () => {
           try {
             // console.log(`下载文件: ${remoteFilePath}`);
-            const fileResponse = await axios.get(`${REMOTE_SERVER_BASE_URL}/files?path=${encodeURIComponent(remoteFilePath)}`, {
+            const fileResponse = await axios.get(`${baseUrl}/files?path=${encodeURIComponent(remoteFilePath)}`, {
               responseType: 'arraybuffer',
               timeout: 60000 // 设置较长的超时时间，以处理大文件
             });
@@ -263,13 +274,28 @@ async function initDatabase() {
 initDatabase();
 
 // 测试与远程服务器的连接
-exports.testConnection = async (_, res) => {
+exports.testConnection = async (req, res) => {
   try {
-    // console.log('测试与远程服务器的连接...');
-    const response = await axios.get('http://172.19.1.81:8010/ping');
+    // 获取用户ID或从查询参数中获取URL
+    const userId = req.user && req.user.id ? req.user.id : null;
+    const urlFromQuery = req.query.url;
+
+    // 优先使用查询参数中的URL，其次使用用户配置，最后使用默认值
+    let serverUrl = urlFromQuery || DEFAULT_MINERU_SERVER_URL;
+    if (!urlFromQuery && userId) {
+      serverUrl = await mineruClient.getUserServerUrl(userId, 'mineru');
+    }
+
+    // 确保URL不以/predict结尾
+    if (serverUrl.endsWith('/predict')) {
+      serverUrl = serverUrl.substring(0, serverUrl.length - 8);
+    }
+
+    console.log(`测试与远程服务器的连接: ${serverUrl}/ping`);
+    const response = await axios.get(`${serverUrl}/ping`);
 
     if (response.status === 200 && response.data.status === 'ok') {
-      // console.log('远程服务器连接成功:', response.data);
+      console.log('远程服务器连接成功:', response.data);
       return res.status(200).json({
         success: true,
         message: '远程服务器连接成功',

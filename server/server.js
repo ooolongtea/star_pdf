@@ -31,8 +31,8 @@ const pool = mysql.createPool({
 app.use(cors());
 app.use(helmet());
 app.use(compression());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '50mb' })); // 增加JSON请求体大小限制
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' })); // 增加URL编码请求体大小限制
 app.use(morgan('dev'));
 
 // 静态文件服务 - 确保能够访问所有上传的文件

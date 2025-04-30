@@ -471,11 +471,11 @@ async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
       messages: messages
     };
 
-    // 如果是视觉模型，可以添加额外参数
-    if (isVisual) {
-      // 可以添加max_tokens等参数
-      requestBody.max_tokens = 1500;
-    }
+    // // 如果是视觉模型，可以添加额外参数
+    // if (isVisual) {
+    //   // 可以添加max_tokens等参数
+    //   requestBody.max_tokens = 1500;
+    // }
 
     // 打印请求体，用于调试
     console.log('通义千问API请求体:', JSON.stringify(requestBody, null, 2));

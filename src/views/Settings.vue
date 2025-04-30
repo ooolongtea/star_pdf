@@ -340,6 +340,57 @@
                     指定保存提取结果的本地目录路径。如果不指定，将使用默认目录。
                   </p>
                 </div>
+
+                <div class="sm:col-span-6 mt-6">
+                  <h3 class="text-lg font-medium text-gray-900">
+                    远程服务器设置
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500">
+                    配置远程服务器URL，用于PDF转换和化学式提取。
+                  </p>
+                </div>
+
+                <div class="sm:col-span-6">
+                  <label
+                    for="mineruServerUrl"
+                    class="block text-sm font-medium text-gray-700"
+                  >
+                    Mineru服务器URL
+                  </label>
+                  <div class="mt-1">
+                    <input
+                      id="mineruServerUrl"
+                      v-model="apiForm.mineruServerUrl"
+                      type="text"
+                      class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                      placeholder="http://172.19.1.81:8010"
+                    />
+                  </div>
+                  <p class="mt-2 text-sm text-gray-500">
+                    指定Mineru服务器URL，用于PDF转换和Word/Excel文档处理。
+                  </p>
+                </div>
+
+                <div class="sm:col-span-6">
+                  <label
+                    for="chemicalExtractionServerUrl"
+                    class="block text-sm font-medium text-gray-700"
+                  >
+                    化学式提取服务器URL
+                  </label>
+                  <div class="mt-1">
+                    <input
+                      id="chemicalExtractionServerUrl"
+                      v-model="apiForm.chemicalExtractionServerUrl"
+                      type="text"
+                      class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                      placeholder="http://172.19.1.81:8011"
+                    />
+                  </div>
+                  <p class="mt-2 text-sm text-gray-500">
+                    指定化学式提取服务器URL，用于从文档中提取化学式和反应信息。
+                  </p>
+                </div>
               </div>
 
               <div class="pt-5">
@@ -347,10 +398,10 @@
                   <button
                     type="button"
                     @click="testConnection"
-                    :disabled="loading || !apiForm.serverUrl"
+                    :disabled="loading || !apiForm.mineruServerUrl"
                     class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                   >
-                    测试连接
+                    测试Mineru服务器连接
                   </button>
                   <button
                     type="submit"
@@ -426,6 +477,8 @@ export default {
       username: "",
       password: "",
       defaultOutputDir: "",
+      mineruServerUrl: "",
+      chemicalExtractionServerUrl: "",
     });
 
     // 密码表单验证
@@ -459,6 +512,11 @@ export default {
         apiForm.username = apiSettings.value.username || "";
         apiForm.password = ""; // 不显示密码
         apiForm.defaultOutputDir = apiSettings.value.defaultOutputDir || "";
+        apiForm.mineruServerUrl =
+          apiSettings.value.mineruServerUrl || "http://172.19.1.81:8010";
+        apiForm.chemicalExtractionServerUrl =
+          apiSettings.value.chemicalExtractionServerUrl ||
+          "http://172.19.1.81:8011";
       } catch (error) {
         console.error("获取API设置失败:", error);
       }
@@ -513,6 +571,8 @@ export default {
           username: apiForm.username,
           password: apiForm.password || undefined, // 只有当有值时才更新密码
           defaultOutputDir: apiForm.defaultOutputDir,
+          mineruServerUrl: apiForm.mineruServerUrl,
+          chemicalExtractionServerUrl: apiForm.chemicalExtractionServerUrl,
         });
 
         store.dispatch("setNotification", {
@@ -526,26 +586,16 @@ export default {
 
     // 测试API连接
     const testConnection = async () => {
-      if (!apiForm.serverUrl) return;
+      // 使用Mineru服务器URL进行测试
+      if (!apiForm.mineruServerUrl) return;
 
       try {
         store.dispatch("setLoading", true);
 
-        // 创建临时axios实例，不影响全局配置
-        const tempAxios = axios.create({
-          baseURL: apiForm.serverUrl,
+        // 使用本地服务器的测试连接API，传递要测试的URL
+        const response = await axios.get("/api/pdf/test-connection", {
+          params: { url: apiForm.mineruServerUrl },
         });
-
-        // 如果有用户名和密码，添加认证
-        if (apiForm.username && apiForm.password) {
-          tempAxios.defaults.auth = {
-            username: apiForm.username,
-            password: apiForm.password,
-          };
-        }
-
-        // 测试连接
-        const response = await tempAxios.get("/api/status");
 
         if (response.data.success) {
           store.dispatch("setNotification", {

@@ -111,7 +111,7 @@ exports.getPatents = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
     const patentModel = new Patent(req.db);
-    
+
     const result = await patentModel.findByUserId(
       req.user.id,
       parseInt(page),
@@ -138,7 +138,7 @@ exports.getPatentDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const patentModel = new Patent(req.db);
-    
+
     const patent = await patentModel.findById(id, req.user.id);
     if (!patent) {
       return res.status(404).json({
@@ -176,7 +176,7 @@ exports.deletePatent = async (req, res) => {
   try {
     const { id } = req.params;
     const patentModel = new Patent(req.db);
-    
+
     const success = await patentModel.delete(id, req.user.id);
     if (!success) {
       return res.status(404).json({
@@ -204,7 +204,7 @@ exports.processPatent = async (req, res) => {
   try {
     const { id } = req.params;
     const patentModel = new Patent(req.db);
-    
+
     // 检查专利是否存在
     const patent = await patentModel.findById(id, req.user.id);
     if (!patent) {
@@ -219,7 +219,7 @@ exports.processPatent = async (req, res) => {
       'SELECT * FROM settings WHERE user_id = ?',
       [req.user.id]
     );
-    
+
     const settings = settingsRows[0] || {
       server_url: 'http://localhost:8080',
       remote_mode: false,
@@ -229,10 +229,10 @@ exports.processPatent = async (req, res) => {
 
     // 生成任务ID
     const taskId = uuidv4();
-    
+
     // 创建任务记录
     await patentModel.createTask(req.user.id, patent.id, taskId);
-    
+
     // 更新专利状态为处理中
     await patentModel.updateStatus(patent.id, 'processing');
 
@@ -260,7 +260,7 @@ exports.processPatent = async (req, res) => {
 // 异步处理专利
 async function processPatentAsync(db, patent, taskId, settings) {
   const patentModel = new Patent(db);
-  
+
   try {
     // 更新任务状态为运行中
     await patentModel.updateTask(taskId, {
@@ -287,7 +287,7 @@ async function processPatentAsync(db, patent, taskId, settings) {
     // 准备API请求
     const formData = new FormData();
     formData.append('patent_file', fs.createReadStream(tempPatentPath));
-    
+
     // 发送到远程API
     const response = await axios.post(
       `${settings.server_url}/api/process_patent`,
@@ -332,7 +332,7 @@ async function processPatentAsync(db, patent, taskId, settings) {
     // 保存结果
     const resultsDir = path.join(__dirname, '../../uploads/results', patent.id.toString());
     await mkdir(resultsDir, { recursive: true });
-    
+
     const resultsZipPath = path.join(resultsDir, 'results.zip');
     await writeFile(resultsZipPath, resultsResponse.data);
 
@@ -419,10 +419,10 @@ async function processPatentAsync(db, patent, taskId, settings) {
     await rimraf(tempDir);
   } catch (error) {
     console.error('异步处理专利错误:', error);
-    
+
     // 更新专利状态为失败
     await patentModel.updateStatus(patent.id, 'failed');
-    
+
     // 更新任务状态为失败
     await patentModel.updateTask(taskId, {
       status: 'failed',
@@ -430,7 +430,7 @@ async function processPatentAsync(db, patent, taskId, settings) {
       message: '处理失败',
       error: error.message
     });
-    
+
     // 清理临时目录
     try {
       await rimraf(path.join(__dirname, '../../uploads/temp', taskId));
@@ -445,7 +445,7 @@ exports.getTaskStatus = async (req, res) => {
   try {
     const { taskId } = req.params;
     const patentModel = new Patent(req.db);
-    
+
     const task = await patentModel.getTask(taskId);
     if (!task) {
       return res.status(404).json({
@@ -483,7 +483,7 @@ exports.getTasks = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
     const patentModel = new Patent(req.db);
-    
+
     const result = await patentModel.getUserTasks(
       req.user.id,
       parseInt(page),
@@ -518,7 +518,9 @@ exports.getSettings = async (req, res) => {
       remote_mode: false,
       username: '',
       password: '',
-      default_output_dir: ''
+      default_output_dir: '',
+      mineru_server_url: 'http://172.19.1.81:8010',
+      chemical_extraction_server_url: 'http://172.19.1.81:8011'
     };
 
     // 不返回密码
@@ -543,7 +545,15 @@ exports.getSettings = async (req, res) => {
 // 更新用户设置
 exports.updateSettings = async (req, res) => {
   try {
-    const { serverUrl, remoteMode, username, password, defaultOutputDir } = req.body;
+    const {
+      serverUrl,
+      remoteMode,
+      username,
+      password,
+      defaultOutputDir,
+      mineruServerUrl,
+      chemicalExtractionServerUrl
+    } = req.body;
 
     // 检查是否已有设置
     const [rows] = await req.db.execute(
@@ -581,6 +591,16 @@ exports.updateSettings = async (req, res) => {
         updateValues.push(defaultOutputDir);
       }
 
+      if (mineruServerUrl !== undefined) {
+        updateFields.push('mineru_server_url = ?');
+        updateValues.push(mineruServerUrl);
+      }
+
+      if (chemicalExtractionServerUrl !== undefined) {
+        updateFields.push('chemical_extraction_server_url = ?');
+        updateValues.push(chemicalExtractionServerUrl);
+      }
+
       if (updateFields.length > 0) {
         updateValues.push(req.user.id);
         await req.db.execute(
@@ -591,14 +611,16 @@ exports.updateSettings = async (req, res) => {
     } else {
       // 创建新设置
       await req.db.execute(
-        'INSERT INTO settings (user_id, server_url, remote_mode, username, password, default_output_dir) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO settings (user_id, server_url, remote_mode, username, password, default_output_dir, mineru_server_url, chemical_extraction_server_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
           req.user.id,
           serverUrl || 'http://localhost:8080',
           remoteMode ? 1 : 0,
           username || '',
           password || '',
-          defaultOutputDir || ''
+          defaultOutputDir || '',
+          mineruServerUrl || 'http://172.19.1.81:8010',
+          chemicalExtractionServerUrl || 'http://172.19.1.81:8011'
         ]
       );
     }
