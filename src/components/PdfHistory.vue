@@ -444,16 +444,25 @@ export default {
     // 下载所有结果
     const downloadAllResults = (fileId) => {
       const token = store.getters["auth/getToken"];
-      // 创建一个临时链接元素
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = `/api/pdf/files/${fileId}/download-all`;
 
-      // 添加授权头
-      a.setAttribute("download", "");
+      // 查找对应的文件信息，以获取原始文件名
+      const file = files.value.find((f) => f.id === fileId);
+      let fileName = "结果文件.zip";
+
+      // 如果找到文件信息，使用原始文件名
+      if (file && file.originalFilename) {
+        // 移除扩展名，添加结果文件后缀
+        const fileNameWithoutExt = file.originalFilename.replace(
+          /\.[^/.]+$/,
+          ""
+        );
+        // 确保文件名不包含非法字符
+        const safeFileName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, "_");
+        fileName = `${safeFileName}_结果文件.zip`;
+      }
 
       // 使用fetch进行带授权的下载
-      fetch(a.href, {
+      fetch(`/api/pdf/files/${fileId}/download-all`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -465,8 +474,12 @@ export default {
           return response.blob();
         })
         .then((blob) => {
+          // 创建下载链接
           const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
           a.href = url;
+          a.download = fileName;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -559,6 +572,15 @@ export default {
     const downloadSingleFile = (url) => {
       const token = store.getters["auth/getToken"];
 
+      // 从URL中提取文件ID
+      const urlParts = url.split("/");
+      const fileIdIndex = urlParts.findIndex((part) => part === "files") + 1;
+      const fileId =
+        fileIdIndex < urlParts.length ? urlParts[fileIdIndex] : null;
+
+      // 查找对应的文件信息，以获取原始文件名
+      const file = fileId ? files.value.find((f) => f.id === fileId) : null;
+
       // 使用fetch进行带授权的下载
       fetch(url, {
         headers: {
@@ -572,11 +594,49 @@ export default {
           return response.blob();
         })
         .then((blob) => {
-          // 从URL中提取文件名
+          // 从URL中提取文件路径
           const urlParts = url.split("?");
           const queryParams = new URLSearchParams(urlParts[1]);
           const filePath = queryParams.get("path");
-          const fileName = filePath ? filePath.split("/").pop() : "download";
+
+          // 获取文件名和扩展名
+          let fileName = filePath ? filePath.split("/").pop() : "download";
+          const fileExt = fileName.includes(".")
+            ? fileName.substring(fileName.lastIndexOf("."))
+            : "";
+
+          // 如果找到文件信息，使用原始文件名作为前缀
+          if (file && file.originalFilename) {
+            // 移除扩展名
+            const fileNameWithoutExt = file.originalFilename.replace(
+              /\.[^/.]+$/,
+              ""
+            );
+            // 确保文件名不包含非法字符
+            const safeFileName = fileNameWithoutExt.replace(
+              /[\\/:*?"<>|]/g,
+              "_"
+            );
+
+            // 根据文件类型决定最终文件名
+            if (
+              fileName.match(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z]+$/i
+              )
+            ) {
+              // UUID格式的文件名，直接使用原始文件名
+              fileName = `${safeFileName}${fileExt}`;
+            } else if (fileExt.toLowerCase() === ".md") {
+              // Markdown文件使用原始文件名
+              fileName = `${safeFileName}.md`;
+            } else if (fileId && fileName.startsWith(fileId)) {
+              // 以文件ID开头的文件，使用原始文件名
+              fileName = `${safeFileName}${fileExt}`;
+            } else {
+              // 其他文件，添加原始文件名作为前缀
+              fileName = `${safeFileName}_${fileName}`;
+            }
+          }
 
           // 创建下载链接
           const downloadUrl = window.URL.createObjectURL(blob);

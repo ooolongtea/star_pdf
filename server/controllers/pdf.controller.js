@@ -174,7 +174,7 @@ async function downloadRemoteDirectory(remotePath, localPath, originalFilename =
 
       if (file.isDirectory) {
         // 递归下载子目录
-        console.log(`下载子目录: ${remoteFilePath}`);
+        // console.log(`下载子目录: ${remoteFilePath}`);
         const subDirPromise = downloadRemoteDirectory(remoteFilePath, localPath, originalFilename);
         downloadPromises.push(subDirPromise);
       } else {
@@ -835,12 +835,35 @@ exports.downloadResultFile = async (req, res) => {
         // 如果解码失败，使用原始文件名
       }
 
-      // 获取文件名
+      // 获取文件名和扩展名
       const fileName = path.basename(filePath);
+      const fileExt = path.extname(fileName).toLowerCase();
+
+      // 提取原始文件名（不带扩展名）
+      const fileNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
+      // 确保文件名不包含非法字符
+      const safeOriginalName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, '_');
 
       // 构建更友好的下载文件名
-      const fileNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
-      const downloadFileName = `${fileNameWithoutExt}_${fileName}`;
+      let downloadFileName;
+
+      // 根据文件类型决定下载文件名
+      if (fileName.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z]+$/i)) {
+        // UUID格式的文件名，直接使用原始文件名
+        downloadFileName = `${safeOriginalName}${fileExt}`;
+      } else if (fileExt === '.md') {
+        // Markdown文件使用原始文件名
+        downloadFileName = `${safeOriginalName}.md`;
+      } else if (fileName.startsWith(id)) {
+        // 以请求ID开头的文件，使用原始文件名
+        downloadFileName = `${safeOriginalName}${fileExt}`;
+      } else if (['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt)) {
+        // 图片文件，保留原名但添加前缀
+        downloadFileName = `${safeOriginalName}_${fileName}`;
+      } else {
+        // 其他文件，添加原始文件名作为前缀
+        downloadFileName = `${safeOriginalName}_${fileName}`;
+      }
 
       // 发送文件
       res.download(fullPath, downloadFileName);
@@ -948,7 +971,9 @@ exports.downloadAllResults = async (req, res) => {
 
       // 创建临时ZIP文件 - 使用原始文件名
       const fileNameWithoutExt = fileInfo.original_filename.replace(/\.[^/.]+$/, '');
-      const zipFilePath = path.join(require('os').tmpdir(), `${fileNameWithoutExt}_results.zip`);
+      // 确保文件名不包含非法字符
+      const safeFileName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, '_');
+      const zipFilePath = path.join(require('os').tmpdir(), `${safeFileName}_results.zip`);
 
       // 使用archiver创建ZIP文件
       const archiver = require('archiver');
@@ -967,8 +992,9 @@ exports.downloadAllResults = async (req, res) => {
           console.error('更新下载信息错误:', error);
         }
 
-        // 发送ZIP文件
-        const downloadFileName = `${fileNameWithoutExt}_结果文件.zip`;
+        // 发送ZIP文件 - 使用原始文件名
+        const safeOriginalName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, '_');
+        const downloadFileName = `${safeOriginalName}_结果文件.zip`;
         res.download(zipFilePath, downloadFileName, () => {
           // 下载完成后删除临时文件
           if (fs.existsSync(zipFilePath)) {
@@ -1010,7 +1036,7 @@ exports.downloadAllResults = async (req, res) => {
       // 扫描所有文件
       scanFiles(resultsDir);
 
-      // 手动添加文件到归档，保持原始目录结构
+      // 手动添加文件到归档，使用更友好的文件名
       const addFilesToArchive = (dir) => {
         const items = fs.readdirSync(dir);
 
@@ -1018,6 +1044,14 @@ exports.downloadAllResults = async (req, res) => {
         const relPath = path.relative(resultsDir, dir);
         // 在ZIP中使用相同的相对路径
         const zipDir = relPath ? relPath : '';
+
+        // 提取原始文件名（不带扩展名）
+        const originalNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
+        // 确保文件名不包含非法字符
+        const safeOriginalName = originalNameWithoutExt.replace(/[\\/:*?"<>|]/g, '_');
+
+        // 获取请求ID（用于识别需要重命名的文件）
+        const requestId = id; // 使用URL参数中的文件ID作为请求ID
 
         for (const item of items) {
           const fullPath = path.join(dir, item);
@@ -1027,8 +1061,35 @@ exports.downloadAllResults = async (req, res) => {
             // 如果是目录，递归处理
             addFilesToArchive(fullPath);
           } else {
-            // 如果是文件，添加到归档，保持原始文件名
-            const zipPath = zipDir ? path.join(zipDir, item) : item;
+            // 如果是文件，添加到归档
+            let zipItemName = item;
+            const fileExt = path.extname(item).toLowerCase();
+
+            // 根据文件类型和命名模式决定最终文件名
+            if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z]+$/i)) {
+              // UUID格式的文件名，替换为原始文件名
+              zipItemName = safeOriginalName + fileExt;
+            } else if (fileExt === '.md') {
+              // Markdown文件使用原始文件名
+              zipItemName = safeOriginalName + '.md';
+            } else if (item.startsWith(requestId)) {
+              // 以请求ID开头的文件，替换为原始文件名
+              zipItemName = safeOriginalName + fileExt;
+            } else if (fileExt === '.pdf' && !item.includes('_')) {
+              // 可能是原始PDF文件
+              zipItemName = safeOriginalName + '.pdf';
+            } else if (['.jpg', '.jpeg', '.png', '.gif'].includes(fileExt)) {
+              // 图片文件保留原名，因为可能在Markdown中被引用
+              // 但如果以UUID开头，则替换前缀
+              if (item.match(/^[0-9a-f]{8}-[0-9a-f]{4}/i)) {
+                zipItemName = safeOriginalName + '_' + item.substring(item.indexOf('-') + 1);
+              }
+            }
+
+            // 构建ZIP中的路径
+            const zipPath = zipDir ? path.join(zipDir, zipItemName) : zipItemName;
+
+            // 添加文件到归档
             archive.file(fullPath, { name: zipPath });
           }
         }
@@ -1089,7 +1150,7 @@ exports.convertPdf = async (req, res) => {
             const utf8Name = buffer.toString('utf8');
             if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
               originalFilename = utf8Name;
-              console.log(`UTF-8解码后的文件名: ${originalFilename}`);
+              // console.log(`UTF-8解码后的文件名: ${originalFilename}`);
             }
           } catch (e) {
             // 如果UTF-8解码失败，尝试其他方法
@@ -1204,7 +1265,7 @@ exports.convertPdf = async (req, res) => {
           requestData.kwargs.request_id = fileId;
         }
 
-        console.log(`请求参数: ${JSON.stringify(requestData, null, 2)}`);
+        // console.log(`请求参数: ${JSON.stringify(requestData, null, 2)}`);
         const response = await axios.post(serverUrl, requestData, {
           timeout: 300000, // 设置超时时间为5分钟
           maxBodyLength: 100 * 1024 * 1024, // 设置最大请求体大小为100MB
