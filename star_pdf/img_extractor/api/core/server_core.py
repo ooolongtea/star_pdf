@@ -172,6 +172,44 @@ class ProcessorManager:
         """
         return list(set(self.pool_device_map.values()))
 
+    def get_pool_for_device(self, device: str) -> Any:
+        """
+        获取指定设备的进程池
+
+        参数:
+            device: 设备名称
+
+        返回:
+            进程池实例
+        """
+        # 查找指定设备的所有进程池
+        device_pools = []
+        for pool, pool_device in self.pool_device_map.items():
+            if pool_device == device:
+                device_pools.append(pool)
+
+        if not device_pools:
+            logger.warning(f"未找到设备 {device} 的进程池")
+            # 如果没有找到，返回第一个可用的进程池
+            return self.process_pools[0] if self.process_pools else None
+
+        # 找出负载最低的进程池
+        min_load = float('inf')
+        selected_pool = None
+
+        for pool in device_pools:
+            # 找出进程池的索引
+            for i, p in enumerate(self.process_pools):
+                if p == pool:
+                    pool_key = f"{device}_{i}"
+                    pool_load = POOL_TASK_COUNT.get(pool_key, 0)
+
+                    if pool_load < min_load:
+                        min_load = pool_load
+                        selected_pool = pool
+
+        return selected_pool
+
     def get_pool_status(self) -> Dict[str, Any]:
         """
         获取所有进程池的状态信息
@@ -255,7 +293,7 @@ class ServerCore:
         # 设置数据目录
         if data_dir is None:
             # 使用默认路径
-            self.data_dir = Path(os.path.expanduser("~/patent_data"))
+            self.data_dir = Path(os.path.expanduser("/home/zhangxiaohong/zhouxingyu/zxy_extractor/data/tmp/patent_data"))
         else:
             self.data_dir = Path(data_dir)
 

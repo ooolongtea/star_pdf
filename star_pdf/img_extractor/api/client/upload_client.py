@@ -24,79 +24,79 @@ class UploadPatentClient(PatentAPIClient):
         返回:
             API响应字典
         """
-        # 确保专利目录存在（仅在非远程模式下检查）
-        if not self.remote_mode and not os.path.exists(patent_dir):
+        # 确保专利目录存在
+        if not os.path.exists(patent_dir):
             raise FileNotFoundError(f"专利目录不存在: {patent_dir}")
 
         try:
-            # 在远程模式下，不需要压缩和上传，直接发送路径
-            if self.remote_mode:
-                data = {"patent_dir": patent_dir, "remote_mode": True}
-                response = requests.post(f"{self.server_url}/api/upload_and_process", json=data, auth=self.auth)
-                response.raise_for_status()
-                result = response.json()
-            else:
-                # 本地模式：将目录压缩成zip文件并上传
-                zip_path = self._compress_directory(patent_dir)
+            # 将目录压缩成zip文件并上传
+            zip_path = self._compress_directory(patent_dir)
 
-                # 上传并处理
-                with open(zip_path, 'rb') as f:
-                    files = {'patent_folder': (os.path.basename(patent_dir) + ".zip", f)}
-                    response = requests.post(f"{self.server_url}/api/upload_and_process", files=files, auth=self.auth)
+            # 上传并处理
+            with open(zip_path, 'rb') as f:
+                # 使用multipart/form-data格式上传
+                files = {'patent_folder': (os.path.basename(patent_dir) + ".zip", f)}
+                # 使用备用路由
+                response = requests.post(
+                    f"{self.server_url}/api/upload_and_process_alt",
+                    files=files,
+                    data={'batch_mode': 'false'},  # 明确指定非批处理模式
+                    auth=self.auth
+                )
 
-                # 删除临时zip文件
-                os.remove(zip_path)
+            # 删除临时zip文件
+            os.remove(zip_path)
 
-                response.raise_for_status()
-                result = response.json()
+            response.raise_for_status()
+            result = response.json()
 
             # 处理下载
-            if result.get("success", False) and save_local and self.remote_mode:
+            if result.get("success", False) and save_local:
                 # 检查是否有下载链接
                 if "download_url" in result:
                     print("处理成功，正在下载结果...")
-                    
+
                     # 创建下载目录
                     if download_dir:
                         base_download_dir = Path(download_dir)
                     else:
                         base_download_dir = Path(os.getcwd()) / "downloads"
-                        
+
                     # 从路径中提取专利ID
                     patent_id = Path(patent_dir).name
                     local_dir = base_download_dir / patent_id
                     local_dir.mkdir(parents=True, exist_ok=True)
-                    
+
                     # 构建下载URL
                     download_url = result["download_url"]
                     if not download_url.startswith("http"):
                         download_url = f"{self.server_url}{download_url}"
-                        
+
                     # 下载结果
                     try:
                         response = requests.get(download_url, auth=self.auth, stream=True)
                         response.raise_for_status()
-                        
+
                         # 处理ZIP文件
                         import io
                         import zipfile
                         zip_data = io.BytesIO(response.content)
-                        
+
                         # 创建下载文件记录
                         downloaded_files = {
                             "output_dir": str(local_dir),
                             "files": []
                         }
-                        
+
                         # 解压文件
                         with zipfile.ZipFile(zip_data) as zipf:
                             total_files = len(zipf.namelist())
                             print(f"解压{total_files}个文件到 {local_dir}")
-                            
+
                             for file_name in zipf.namelist():
                                 zipf.extract(file_name, local_dir)
                                 file_path = local_dir / file_name
-                                
+
                                 # 确定文件类型
                                 file_type = "unknown"
                                 if file_path.suffix.lower() in ['.xlsx', '.xls']:
@@ -105,12 +105,12 @@ class UploadPatentClient(PatentAPIClient):
                                     file_type = "json"
                                 elif file_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
                                     file_type = "image"
-                                    
+
                                 downloaded_files["files"].append({
                                     "type": file_type,
                                     "path": str(file_path)
                                 })
-                        
+
                         # 添加下载记录到结果
                         result["local_files"] = downloaded_files
                         print(f"成功下载处理结果到: {local_dir}")
@@ -137,101 +137,96 @@ class UploadPatentClient(PatentAPIClient):
         返回:
             API响应字典
         """
-        # 确保路径存在（仅在非远程模式下检查）
-        if not self.remote_mode and not os.path.exists(path):
+        # 确保路径存在
+        if not os.path.exists(path):
             raise FileNotFoundError(f"路径不存在: {path}")
 
         try:
-            # 在远程模式下，直接发送路径
-            if self.remote_mode:
-                data = {
-                    "path": path,
-                    "remote_mode": True,
-                    "batch_mode": True
-                }
-                response = requests.post(f"{self.server_url}/api/upload_and_process", json=data, auth=self.auth)
-                response.raise_for_status()
-                result = response.json()
+            # 检查是文件夹还是压缩包
+            is_archive = False
+            for ext in ['.zip', '.rar', '.tar', '.gz', '.7z']:
+                if path.lower().endswith(ext):
+                    is_archive = True
+                    break
+
+            # 如果是目录，压缩后上传
+            if os.path.isdir(path):
+                zip_path = self._compress_directory(path)
+                filename = os.path.basename(path) + ".zip"
+            # 如果是压缩包，直接上传
+            elif is_archive:
+                zip_path = path
+                filename = os.path.basename(path)
             else:
-                # 检查是文件夹还是压缩包
-                is_archive = False
-                for ext in ['.zip', '.rar', '.tar', '.gz', '.7z']:
-                    if path.lower().endswith(ext):
-                        is_archive = True
-                        break
+                return {"success": False, "error": "不支持的文件类型，请提供目录或压缩包"}
 
-                # 如果是目录，压缩后上传
-                if os.path.isdir(path):
-                    zip_path = self._compress_directory(path)
-                    filename = os.path.basename(path) + ".zip"
-                # 如果是压缩包，直接上传
-                elif is_archive:
-                    zip_path = path
-                    filename = os.path.basename(path)
-                else:
-                    return {"success": False, "error": "不支持的文件类型，请提供目录或压缩包"}
+            # 上传并处理
+            with open(zip_path, 'rb') as f:
+                # 使用multipart/form-data格式上传
+                files = {'patent_folder': (filename, f)}
+                # 使用备用路由
+                response = requests.post(
+                    f"{self.server_url}/api/upload_and_process_alt",
+                    files=files,
+                    data={'batch_mode': 'true'},  # 标记为批处理模式
+                    auth=self.auth
+                )
 
-                # 上传并处理
-                with open(zip_path, 'rb') as f:
-                    files = {'patent_folder': (filename, f)}
-                    data = {'batch_mode': 'true'}  # 标记为批处理模式
-                    response = requests.post(f"{self.server_url}/api/upload_and_process", files=files, data=data, auth=self.auth)
+            # 如果我们创建了临时zip文件，删除它
+            if os.path.isdir(path) and zip_path != path:
+                os.remove(zip_path)
 
-                # 如果我们创建了临时zip文件，删除它
-                if os.path.isdir(path) and zip_path != path:
-                    os.remove(zip_path)
-
-                response.raise_for_status()
-                result = response.json()
+            response.raise_for_status()
+            result = response.json()
 
             # 处理下载
-            if result.get("success", False) and save_local and self.remote_mode:
+            if result.get("success", False) and save_local:
                 # 检查是否有下载链接
                 if "download_url" in result:
                     print("批处理成功，正在下载结果...")
-                    
+
                     # 创建下载目录
                     if download_dir:
                         base_download_dir = Path(download_dir)
                     else:
                         base_download_dir = Path(os.getcwd()) / "downloads"
-                        
+
                     # 为批处理结果创建目录
                     import time
                     batch_dir_name = f"batch_results_{int(time.time())}"
                     local_dir = base_download_dir / batch_dir_name
                     local_dir.mkdir(parents=True, exist_ok=True)
-                    
+
                     # 构建下载URL
                     download_url = result["download_url"]
                     if not download_url.startswith("http"):
                         download_url = f"{self.server_url}{download_url}"
-                        
+
                     # 下载结果
                     try:
                         response = requests.get(download_url, auth=self.auth, stream=True)
                         response.raise_for_status()
-                        
+
                         # 处理ZIP文件
                         import io
                         import zipfile
                         zip_data = io.BytesIO(response.content)
-                        
+
                         # 创建下载文件记录
                         downloaded_files = {
                             "output_dir": str(local_dir),
                             "files": []
                         }
-                        
+
                         # 解压文件
                         with zipfile.ZipFile(zip_data) as zipf:
                             total_files = len(zipf.namelist())
                             print(f"解压{total_files}个文件到 {local_dir}")
-                            
+
                             for file_name in zipf.namelist():
                                 zipf.extract(file_name, local_dir)
                                 file_path = local_dir / file_name
-                                
+
                                 # 确定文件类型
                                 file_type = "unknown"
                                 if file_path.suffix.lower() in ['.xlsx', '.xls']:
@@ -240,12 +235,12 @@ class UploadPatentClient(PatentAPIClient):
                                     file_type = "json"
                                 elif file_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
                                     file_type = "image"
-                                    
+
                                 downloaded_files["files"].append({
                                     "type": file_type,
                                     "path": str(file_path)
                                 })
-                        
+
                         # 添加下载记录到结果
                         result["local_files"] = downloaded_files
                         print(f"成功下载批处理结果到: {local_dir}")

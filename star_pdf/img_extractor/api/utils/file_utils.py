@@ -8,19 +8,24 @@ import tempfile
 import mimetypes
 from pathlib import Path
 
-def extract_archive(archive_path):
+def extract_archive(archive_path, extract_dir=None):
     """
-    解压压缩包到临时目录
+    解压压缩包到指定目录或临时目录
 
     参数:
         archive_path: 压缩包路径
+        extract_dir: 解压目标目录，如果为None则创建临时目录
 
     返回:
         解压后的目录路径，失败返回None
     """
     try:
-        # 创建临时目录
-        extract_dir = tempfile.mkdtemp()
+        # 如果没有指定解压目录，创建临时目录
+        if extract_dir is None:
+            extract_dir = tempfile.mkdtemp()
+        else:
+            # 确保目录存在
+            os.makedirs(extract_dir, exist_ok=True)
 
         # 根据文件扩展名选择解压方法
         archive_lower = archive_path.lower()

@@ -378,7 +378,7 @@ def main():
     """主函数"""
     # 全局参数解析器
     parser = argparse.ArgumentParser(description="专利处理客户端")
-    parser.add_argument("--server", default="http://172.19.1.81:8080", help="服务器URL，默认http://172.19.1.81:8080")
+    parser.add_argument("--server", default="http://172.19.1.81:8011", help="服务器URL，默认http://172.19.1.81:8011")
     parser.add_argument("--remote", action="store_true", help="远程模式，路径指向服务器上的位置")
     parser.add_argument("--username", default="zhouxingyu", help="服务器认证用户名，默认zhouxingyu")
     parser.add_argument("--password", default="zxy123456", help="服务器认证密码，默认zxy123456")

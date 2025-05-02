@@ -94,9 +94,7 @@ def init_server(data_dir: str = None,
     返回:
         服务器核心实例
     """
-    # 设置多进程启动方法
-    # 对于CUDA应用，必须使用'spawn'方法，而不是'fork'
-    # 因为PyTorch的CUDA功能在fork的子进程中无法正确初始化
+
     try:
         multiprocessing.set_start_method('spawn', force=True)
     except RuntimeError as e:

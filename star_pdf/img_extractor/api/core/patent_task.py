@@ -23,7 +23,7 @@ TASK_PROGRESS_LOCK = multiprocessing.Lock()
 def update_task_progress(task_id, status, progress=None, message=None, error=None):
     """
     更新任务进度信息
-    
+
     参数:
         task_id: 任务ID
         status: 任务状态（'pending', 'running', 'completed', 'failed'）
@@ -40,28 +40,28 @@ def update_task_progress(task_id, status, progress=None, message=None, error=Non
                 'update_time': time.time(),
                 'message': '等待处理'
             }
-        
+
         if status:
             TASK_PROGRESS[task_id]['status'] = status
-        
+
         if progress is not None:
             TASK_PROGRESS[task_id]['progress'] = progress
-        
+
         if message:
             TASK_PROGRESS[task_id]['message'] = message
-        
+
         if error:
             TASK_PROGRESS[task_id]['error'] = error
-        
+
         TASK_PROGRESS[task_id]['update_time'] = time.time()
 
 def get_task_progress(task_id):
     """
     获取任务进度信息
-    
+
     参数:
         task_id: 任务ID
-    
+
     返回:
         进度信息字典，如果不存在则返回None
     """
@@ -71,7 +71,7 @@ def get_task_progress(task_id):
 def cleanup_old_tasks(max_age=3600):
     """
     清理旧任务的进度记录
-    
+
     参数:
         max_age: 最大保留时间（秒）
     """
@@ -83,7 +83,7 @@ def cleanup_old_tasks(max_age=3600):
             if info['status'] in ('completed', 'failed'):
                 if current_time - info['update_time'] > max_age:
                     to_remove.append(task_id)
-        
+
         # 删除旧任务
         for task_id in to_remove:
             del TASK_PROGRESS[task_id]
@@ -91,79 +91,79 @@ def cleanup_old_tasks(max_age=3600):
 def process_patent_task_with_retry(patent_dir, device, task_id=None, max_retries=3):
     """
     使用指数退避重试机制处理专利
-    
+
     参数:
         patent_dir: 专利目录路径
         device: 设备
         task_id: 任务ID，为None时自动生成
         max_retries: 最大重试次数
-    
+
     返回:
         处理结果字典
     """
     # 如果未提供任务ID，使用目录名作为ID
     if task_id is None:
         task_id = f"{Path(patent_dir).name}_{int(time.time())}"
-    
+
     # 初始化进度
     update_task_progress(task_id, 'pending')
-    
+
     retry_count = 0
     last_error = None
-    
+
     while retry_count <= max_retries:
         try:
             # 更新进度状态
             retry_message = f"(重试 {retry_count}/{max_retries})" if retry_count > 0 else ""
             update_task_progress(
-                task_id, 
-                'running', 
-                progress=0, 
+                task_id,
+                'running',
+                progress=0,
                 message=f"开始处理专利 {Path(patent_dir).name} {retry_message}"
             )
-            
+
             # 执行实际处理
             result = process_patent_task_internal(patent_dir, device, task_id)
-            
+
             # 处理成功，更新进度并返回结果
             if result.get("success", False):
                 update_task_progress(
-                    task_id, 
-                    'completed', 
-                    progress=100, 
+                    task_id,
+                    'completed',
+                    progress=100,
                     message=f"专利 {Path(patent_dir).name} 处理完成"
                 )
             else:
                 update_task_progress(
-                    task_id, 
-                    'failed', 
+                    task_id,
+                    'failed',
                     message=f"专利 {Path(patent_dir).name} 处理失败",
                     error=result.get("error", "未知错误")
                 )
-            
+
             return result
-            
+
         except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
             # 处理OOM和常见运行时错误
             error_str = str(e)
             last_error = error_str
-            
+
             # 检查是否是OOM错误
             is_oom = isinstance(e, torch.cuda.OutOfMemoryError) or "CUDA out of memory" in error_str
-            
+
             # 清理GPU内存
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            
+
             # 执行垃圾回收
             gc.collect()
-            
+
             # 更新进度
             retry_count += 1
             if retry_count <= max_retries:
                 # 计算退避时间（指数增长）
                 backoff_time = min(2 ** retry_count + random.uniform(0, 1), 30)
-                
+
                 update_task_progress(
                     task_id,
                     'running',
@@ -171,7 +171,7 @@ def process_patent_task_with_retry(patent_dir, device, task_id=None, max_retries
                     message=f"遇到{'内存不足' if is_oom else '运行时'}错误，{backoff_time:.1f}秒后重试 ({retry_count}/{max_retries})",
                     error=error_str
                 )
-                
+
                 # 等待退避时间
                 time.sleep(backoff_time)
             else:
@@ -182,32 +182,32 @@ def process_patent_task_with_retry(patent_dir, device, task_id=None, max_retries
                     message=f"专利 {Path(patent_dir).name} 处理失败，超过最大重试次数",
                     error=error_str
                 )
-                
+
                 return {
                     "success": False,
                     "patent_dir": patent_dir,
                     "error": f"处理失败，原因: {error_str}，已重试 {max_retries} 次"
                 }
-        
+
         except Exception as e:
             # 处理其他所有异常
             error_str = str(e)
             last_error = error_str
             traceback.print_exc()
-            
+
             update_task_progress(
                 task_id,
                 'failed',
                 message=f"专利 {Path(patent_dir).name} 处理失败，发生异常",
                 error=error_str
             )
-            
+
             return {
                 "success": False,
                 "patent_dir": patent_dir,
                 "error": f"处理失败，原因: {error_str}"
             }
-    
+
     # 不应该到达这里，但以防万一
     return {
         "success": False,
@@ -218,7 +218,7 @@ def process_patent_task_with_retry(patent_dir, device, task_id=None, max_retries
 def process_patent_task_internal(patent_dir, device, task_id):
     """
     处理单个专利的内部函数，支持进度更新
-    
+
     参数:
         patent_dir: 专利目录路径
         device: 设备
@@ -234,15 +234,51 @@ def process_patent_task_internal(patent_dir, device, task_id):
         patent_processor = None
         result_manager = None
 
-        # 检查目录是否存在
+        # 检查路径是否存在
         patent_path = Path(patent_dir)
         if not patent_path.exists():
-            update_task_progress(task_id, 'failed', message="专利目录不存在", error=f"目录不存在: {patent_dir}")
+            update_task_progress(task_id, 'failed', message="专利路径不存在", error=f"路径不存在: {patent_dir}")
             return {
                 "success": False,
                 "patent_dir": patent_dir,
-                "error": f"专利目录不存在: {patent_dir}"
+                "error": f"专利路径不存在: {patent_dir}"
             }
+
+        # 检查是否是压缩文件
+        is_archive = any(patent_dir.lower().endswith(ext) for ext in ['.zip', '.rar', '.tar', '.gz', '.7z'])
+        if is_archive:
+            update_task_progress(task_id, 'running', progress=10, message="检测到压缩文件，正在解压")
+            print(f"检测到压缩文件: {patent_dir}，正在解压")
+
+            # 解压文件
+            from api.utils.file_utils import extract_archive
+            extract_dir = extract_archive(patent_dir)
+            if not extract_dir:
+                update_task_progress(task_id, 'failed', message="无法解压文件", error=f"无法解压文件: {patent_dir}")
+                return {
+                    "success": False,
+                    "patent_dir": patent_dir,
+                    "error": f"无法解压文件: {patent_dir}"
+                }
+
+            # 更新专利路径为解压后的目录
+            patent_path = Path(extract_dir)
+            update_task_progress(task_id, 'running', progress=15, message=f"文件已解压到: {extract_dir}")
+            print(f"文件已解压到: {extract_dir}")
+
+            # 查找专利目录
+            potential_patent_dirs = [d for d in patent_path.iterdir() if d.is_dir() and (d / 'image').exists()]
+            if potential_patent_dirs:
+                # 使用第一个找到的专利目录
+                patent_path = potential_patent_dirs[0]
+                update_task_progress(task_id, 'running', progress=20,
+                                   message=f"在解压目录中找到专利目录: {patent_path.name}")
+                print(f"在解压目录中找到专利目录: {patent_path}")
+            else:
+                # 如果没有找到专利目录，继续使用解压目录
+                update_task_progress(task_id, 'running', progress=20,
+                                   message="在解压目录中未找到专利子目录，尝试使用解压目录")
+                print(f"在解压目录中未找到专利子目录，尝试使用解压目录: {patent_path}")
 
         # 检查是否有image子目录（专利目录的特征）
         image_dir = patent_path / 'image'
@@ -255,7 +291,7 @@ def process_patent_task_internal(patent_dir, device, task_id):
                 # 如果发现潜在专利目录，记录日志但继续处理原目录
                 print(f"警告: {patent_dir} 没有image子目录，但发现 {len(potential_patent_dirs)} 个潜在专利子目录")
                 print(f"这可能不是专利目录，但仍将尝试处理")
-                update_task_progress(task_id, 'running', progress=10, 
+                update_task_progress(task_id, 'running', progress=10,
                                    message=f"发现 {len(potential_patent_dirs)} 个潜在专利子目录")
             else:
                 print(f"警告: {patent_dir} 不是有效的专利目录（没有image子目录）")
@@ -265,7 +301,7 @@ def process_patent_task_internal(patent_dir, device, task_id):
         # 获取当前进程的处理器
         processor = get_processor_for_process(device)
         if processor is None:
-            update_task_progress(task_id, 'failed', message="无法获取处理器", 
+            update_task_progress(task_id, 'failed', message="无法获取处理器",
                                error=f"无法获取设备 {device} 的处理器")
             return {
                 "success": False,
@@ -287,8 +323,9 @@ def process_patent_task_internal(patent_dir, device, task_id):
         update_task_progress(task_id, 'running', progress=20, message="创建专利处理器")
         # 创建专利处理器
         try:
+            # 使用更新后的专利路径
             patent_processor = PatentProcessor(
-                patent_dir=patent_dir,
+                patent_dir=str(patent_path),  # 使用可能已更新的专利路径
                 result_manager=result_manager,
                 device="cuda:0" if device.startswith("cuda") else device,  # 在工作进程中使用正确的设备名称
                 processor=processor
@@ -305,7 +342,7 @@ def process_patent_task_internal(patent_dir, device, task_id):
         # 检查patent_processor是否成功创建
         if patent_processor is None:
             print("专利处理器创建失败，返回None")
-            update_task_progress(task_id, 'failed', message="专利处理器创建失败", 
+            update_task_progress(task_id, 'failed', message="专利处理器创建失败",
                               error="专利处理器对象为空")
             return {
                 "success": False,
@@ -316,7 +353,7 @@ def process_patent_task_internal(patent_dir, device, task_id):
         # 处理专利
         update_task_progress(task_id, 'running', progress=25, message="开始专利处理")
         start_time = time.time()
-        
+
         # 在这里我们可以捕获patent_processor.process的进度更新事件
         # 假设这个方法现在支持进度回调
         success = False
@@ -328,7 +365,7 @@ def process_patent_task_internal(patent_dir, device, task_id):
             )
         except Exception as e:
             print(f"专利处理过程出错: {str(e)}")
-            update_task_progress(task_id, 'failed', message=f"专利处理过程出错: {str(e)}", 
+            update_task_progress(task_id, 'failed', message=f"专利处理过程出错: {str(e)}",
                                error=str(e))
             # 清理资源但保留处理器
             if result_manager is not None and patent_processor is not None:
@@ -339,23 +376,23 @@ def process_patent_task_internal(patent_dir, device, task_id):
                 "error": f"专利处理过程出错: {str(e)}",
                 "task_id": task_id
             }
-        
+
         elapsed_time = time.time() - start_time
 
         if success and patent_processor is not None:
             # 保存结果
             update_task_progress(task_id, 'running', progress=80, message="保存处理结果")
-            output_dir = Path(patent_dir)
+            output_dir = patent_path  # 使用更新后的专利路径
             result_manager.save_results(output_dir)
 
             # 保存Excel
             update_task_progress(task_id, 'running', progress=90, message="生成Excel报告")
             try:
-                excel_file = output_dir / f"{Path(patent_dir).name}_chemicals.xlsx"
+                excel_file = output_dir / f"{patent_path.name}_chemicals.xlsx"
                 patent_processor.write_to_excel(excel_file)
             except Exception as e:
                 print(f"生成Excel报告失败: {str(e)}")
-                update_task_progress(task_id, 'failed', message=f"生成Excel报告失败: {str(e)}", 
+                update_task_progress(task_id, 'failed', message=f"生成Excel报告失败: {str(e)}",
                                   error=str(e))
                 # 清理资源但保留处理器
                 cleanup_patent_resources(result_manager, patent_processor)
@@ -368,7 +405,8 @@ def process_patent_task_internal(patent_dir, device, task_id):
 
             result = {
                 "success": True,
-                "patent_dir": patent_dir,
+                "patent_dir": str(patent_path),  # 使用更新后的专利路径
+                "original_path": patent_dir,     # 保留原始路径
                 "processing_time": elapsed_time,
                 "output_dir": str(output_dir),
                 "excel_file": str(excel_file),
@@ -429,7 +467,7 @@ def process_batch_patents(patent_dirs, get_next_device_func, get_pool_func):
     """
     # 生成批处理任务ID
     batch_id = f"batch_{int(time.time())}"
-    
+
     # 为每个专利创建任务ID
     task_ids = {}
     for patent_dir in patent_dirs:
@@ -437,7 +475,7 @@ def process_batch_patents(patent_dirs, get_next_device_func, get_pool_func):
         task_ids[patent_dir] = task_id
         # 初始化任务进度
         update_task_progress(task_id, 'pending', message=f"等待处理专利 {Path(patent_dir).name}")
-    
+
     # 重置任务计数
     with PROCESS_LOCK:
         for device in DEVICE_TASK_COUNT.keys():
@@ -461,13 +499,13 @@ def process_batch_patents(patent_dirs, get_next_device_func, get_pool_func):
 
             # 获取任务ID
             task_id = task_ids[patent_dir]
-            
+
             # 更新进度状态
             update_task_progress(task_id, 'pending', message=f"已分配到设备 {device}")
 
             # 使用apply_async进行异步处理，不阻塞
             task = pool.apply_async(
-                process_patent_task_with_retry, 
+                process_patent_task_with_retry,
                 args=(patent_dir, device, task_id, 3)  # 设置最大重试次数为3
             )
             tasks.append((patent_dir, task, task_id))

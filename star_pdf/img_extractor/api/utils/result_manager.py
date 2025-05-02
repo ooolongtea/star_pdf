@@ -164,16 +164,20 @@ class ResultManager:
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        print("开始保存")
 
         # 如果配置了，保存JSON结果
         if self.output_config.get("json_results", True):
             self._save_json_results(output_dir)
+            print("保存json结果")
+            
 
         # 如果配置了，保存可视化
         if self.output_config.get("visualization", True):
             # 确保可视化图像位于主输出目录的子目录中
             vis_dir = output_dir / "image_visualizations"
             self._save_visualizations(vis_dir)
+            print("保存可视化")
 
         # 返回所有保存文件的路径
         return {
