@@ -52,7 +52,15 @@ const routes = [
     path: '/results',
     name: 'Results',
     component: Results,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
+    beforeEnter: (to, from, next) => {
+      // 如果是从/patents/:id页面来的，直接返回
+      if (from.path.startsWith('/patents/')) {
+        next(false);
+        return;
+      }
+      next();
+    }
   },
   {
     path: '/patents/:id',

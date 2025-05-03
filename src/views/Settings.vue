@@ -397,11 +397,19 @@
                 <div class="flex justify-end">
                   <button
                     type="button"
-                    @click="testConnection"
+                    @click="testMineruConnection"
                     :disabled="loading || !apiForm.mineruServerUrl"
                     class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                   >
                     测试Mineru服务器连接
+                  </button>
+                  <button
+                    type="button"
+                    @click="testChemicalConnection"
+                    :disabled="loading || !apiForm.chemicalExtractionServerUrl"
+                    class="ml-3 inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    测试化学式提取服务器连接
                   </button>
                   <button
                     type="submit"
@@ -584,8 +592,8 @@ export default {
       }
     };
 
-    // 测试API连接
-    const testConnection = async () => {
+    // 测试Mineru服务器连接
+    const testMineruConnection = async () => {
       // 使用Mineru服务器URL进行测试
       if (!apiForm.mineruServerUrl) return;
 
@@ -600,14 +608,49 @@ export default {
         if (response.data.success) {
           store.dispatch("setNotification", {
             type: "success",
-            message: "连接成功！服务器状态正常。",
+            message: "Mineru服务器连接成功！服务器状态正常。",
           });
         } else {
-          store.dispatch("setError", "连接失败：服务器返回错误。");
+          store.dispatch("setError", "Mineru服务器连接失败：服务器返回错误。");
         }
       } catch (error) {
-        console.error("测试连接失败:", error);
-        store.dispatch("setError", `连接失败：${error.message}`);
+        console.error("测试Mineru服务器连接失败:", error);
+        store.dispatch("setError", `Mineru服务器连接失败：${error.message}`);
+      } finally {
+        store.dispatch("setLoading", false);
+      }
+    };
+
+    // 测试化学式提取服务器连接
+    const testChemicalConnection = async () => {
+      // 使用化学式提取服务器URL进行测试
+      if (!apiForm.chemicalExtractionServerUrl) return;
+
+      try {
+        store.dispatch("setLoading", true);
+
+        // 使用本地服务器的测试连接API，传递要测试的URL
+        const response = await axios.get("/api/extraction/test-connection", {
+          params: { url: apiForm.chemicalExtractionServerUrl },
+        });
+
+        if (response.data.success) {
+          store.dispatch("setNotification", {
+            type: "success",
+            message: "化学式提取服务器连接成功！服务器状态正常。",
+          });
+        } else {
+          store.dispatch(
+            "setError",
+            "化学式提取服务器连接失败：服务器返回错误。"
+          );
+        }
+      } catch (error) {
+        console.error("测试化学式提取服务器连接失败:", error);
+        store.dispatch(
+          "setError",
+          `化学式提取服务器连接失败：${error.message}`
+        );
       } finally {
         store.dispatch("setLoading", false);
       }
@@ -623,7 +666,8 @@ export default {
       updateAccount,
       updatePassword,
       updateApiSettings,
-      testConnection,
+      testMineruConnection,
+      testChemicalConnection,
     };
   },
 };

@@ -28,8 +28,19 @@ const pool = mysql.createPool({
 });
 
 // 中间件
-app.use(cors());
-app.use(helmet());
+// 配置CORS，允许前端应用访问
+app.use(cors({
+  origin: ['http://localhost:3001', 'http://127.0.0.1:3001'], // 允许的前端域名和端口
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true // 允许携带凭证
+}));
+
+// 配置Helmet，但允许图片加载
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' } // 允许跨域加载资源
+}));
+
 app.use(compression());
 app.use(bodyParser.json({ limit: '50mb' })); // 增加JSON请求体大小限制
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' })); // 增加URL编码请求体大小限制
@@ -38,10 +49,16 @@ app.use(morgan('dev'));
 // 静态文件服务 - 确保能够访问所有上传的文件
 app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
   setHeaders: (res, filePath) => {
-    // 为图片文件设置缓存头
+    // 为图片文件设置缓存头和CORS头
     if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.png') || filePath.endsWith('.gif')) {
       res.setHeader('Cache-Control', 'public, max-age=86400'); // 缓存1天
       res.setHeader('Content-Type', 'image/' + filePath.split('.').pop());
+
+      // 添加CORS头
+      res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     }
   },
   // 设置更宽松的选项

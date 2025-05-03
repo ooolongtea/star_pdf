@@ -160,6 +160,20 @@ async def get_server_status():
             message=f"获取服务器状态失败: {str(e)}"
         )
 
+@router.get("/ping")
+async def ping():
+    """
+    简单的ping接口，用于测试服务器连接
+
+    返回:
+        Dict: 包含状态信息的字典
+    """
+    return {
+        "status": "ok",
+        "message": "化学式提取服务器正在运行",
+        "timestamp": time.time()
+    }
+
 @router.get("/health")
 async def health_check():
     """
