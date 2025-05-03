@@ -119,7 +119,7 @@
           </div>
           <div
             v-else
-            class="whitespace-pre-wrap leading-tight markdown-content flex-1 self-center"
+            class="whitespace-pre-wrap leading-snug markdown-content flex-1 self-center"
           >
             <!-- 用户消息中的图片 -->
             <div v-if="message.role === 'user' && message.image" class="mb-2">
@@ -131,17 +131,23 @@
               />
             </div>
 
+            <!-- 思考链（如果有） -->
+            <ThoughtChain
+              v-if="message.role === 'assistant' && thoughtChain"
+              :thoughtChain="thoughtChain"
+            />
+
             <!-- 文本内容 -->
             <TypewriterText
               v-if="message.role === 'assistant' && !isTyped"
-              :text="message.content"
+              :text="actualContent"
               :speed="5"
               :startDelay="50"
               :skipAnimation="!shouldAnimate"
               @typed="isTyped = true"
             />
             <div v-else class="message-markdown">
-              <div v-html="renderMarkdown(message.content)"></div>
+              <div v-html="renderMarkdown(actualContent)"></div>
             </div>
 
             <!-- AI回复中的图片 -->
@@ -177,6 +183,7 @@
 import { ref, watch, onMounted } from "vue";
 import { useStore } from "vuex";
 import TypewriterText from "./TypewriterText.vue";
+import ThoughtChain from "./ThoughtChain.vue";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
@@ -187,6 +194,7 @@ export default {
   name: "MessageItem",
   components: {
     TypewriterText,
+    ThoughtChain,
   },
   props: {
     message: {
@@ -199,6 +207,27 @@ export default {
     // 本地状态，用于跟踪打字状态和动画状态
     const isTyped = ref(false);
     const shouldAnimate = ref(false);
+
+    // 提取思考链和实际内容
+    const thoughtChain = ref("");
+    const actualContent = ref("");
+
+    // 解析消息内容，提取思考链
+    if (props.message.role === "assistant" && props.message.content) {
+      const content = props.message.content;
+      const thoughtMatch = content.match(/<thought>([\s\S]*?)<\/thought>/);
+
+      if (thoughtMatch && thoughtMatch[1]) {
+        thoughtChain.value = thoughtMatch[1].trim();
+        actualContent.value = content
+          .replace(/<thought>[\s\S]*?<\/thought>\s*/, "")
+          .trim();
+      } else {
+        actualContent.value = content;
+      }
+    } else {
+      actualContent.value = props.message.content || "";
+    }
 
     // 获取当前用户信息
     const user = store.getters["auth/getUser"];
@@ -375,12 +404,32 @@ export default {
       }, 2000);
     };
 
-    // 监听消息变化，重置打字状态
+    // 监听消息变化，重置打字状态并重新解析思考链
     watch(
       () => props.message.content,
-      () => {
+      (newContent) => {
         if (props.message.role === "assistant") {
           isTyped.value = false;
+
+          // 重新解析思考链
+          if (newContent) {
+            const thoughtMatch = newContent.match(
+              /<thought>([\s\S]*?)<\/thought>/
+            );
+
+            if (thoughtMatch && thoughtMatch[1]) {
+              thoughtChain.value = thoughtMatch[1].trim();
+              actualContent.value = newContent
+                .replace(/<thought>[\s\S]*?<\/thought>\s*/, "")
+                .trim();
+            } else {
+              thoughtChain.value = "";
+              actualContent.value = newContent;
+            }
+          } else {
+            thoughtChain.value = "";
+            actualContent.value = "";
+          }
         }
       }
     );
@@ -389,15 +438,29 @@ export default {
     const renderMarkdown = (content) => {
       if (!content) return "";
 
+      // 配置marked选项
+      marked.setOptions({
+        // eslint-disable-next-line no-unused-vars
+        highlight: function (code, lang) {
+          // 这里可以集成语法高亮库，如Prism或Highlight.js
+          // 这里我们只是简单地返回代码，并在后续处理中添加语言标记
+          return code;
+        },
+        langPrefix: "language-",
+        gfm: true,
+        breaks: true,
+      });
+
       // 使用marked解析Markdown
       const rawHtml = marked(content);
 
       // 使用DOMPurify清理HTML，防止XSS攻击
       const cleanHtml = DOMPurify.sanitize(rawHtml);
 
-      // 在下一个tick中添加复制按钮到代码块
+      // 在下一个tick中添加复制按钮到代码块和语言标签
       setTimeout(() => {
         addCopyButtonsToCodeBlocks();
+        addLanguageLabelsToCodeBlocks();
       }, 0);
 
       return cleanHtml;
@@ -466,6 +529,37 @@ export default {
       }, 2000);
     };
 
+    // 为代码块添加语言标签
+    const addLanguageLabelsToCodeBlocks = () => {
+      // 查找所有代码块
+      const codeBlocks = document.querySelectorAll(".message-markdown pre");
+
+      codeBlocks.forEach((block) => {
+        // 查找代码元素
+        const code = block.querySelector("code");
+        if (!code) return;
+
+        // 获取语言类名
+        const classes = code.className.split(" ");
+        let language = "";
+
+        // 查找语言类名（格式为 language-xxx）
+        for (const cls of classes) {
+          if (cls.startsWith("language-")) {
+            language = cls.replace("language-", "");
+            break;
+          }
+        }
+
+        // 如果找到了语言，添加到pre元素的data-language属性
+        if (language && language !== "plaintext" && language !== "text") {
+          block.setAttribute("data-language", language);
+        } else {
+          block.setAttribute("data-language", "代码");
+        }
+      });
+    };
+
     // 显示全屏图片
     const showFullImage = (imageSrc) => {
       if (!imageSrc) return;
@@ -520,129 +614,266 @@ export default {
       modelLogo,
       handleImageError,
       showFullImage,
+      thoughtChain,
+      actualContent,
     };
   },
 };
 </script>
 
 <style scoped>
-/* 添加样式以支持Markdown渲染 */
+/* 消息气泡样式 - 更现代化的设计 */
+.message-bubble {
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  max-width: 100%;
+  position: relative;
+  line-height: 1.5;
+  padding: 0.75rem 1rem !important; /* 更宽敞的内边距 */
+  transition: all 0.2s ease;
+}
+
+.message-bubble:hover {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.user-message {
+  background-color: #2563eb; /* 蓝色背景 */
+  color: white;
+  border-top-right-radius: 0.25rem;
+  border-bottom-right-radius: 1rem;
+  margin-right: 0.5rem;
+}
+
+.ai-message {
+  background-color: #f7f7f8; /* 浅灰色背景 */
+  color: #111827;
+  border-top-left-radius: 0.25rem;
+  border-bottom-left-radius: 1rem;
+  border: 1px solid #e5e7eb;
+}
+
+/* 添加样式以支持Markdown渲染 - 更现代化的设计 */
 :deep(pre) {
-  @apply bg-gray-100 p-1 rounded my-0.5 overflow-x-auto;
+  background-color: #f8fafc;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  position: relative;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 :deep(code) {
-  @apply bg-gray-100 px-1 py-0.5 rounded text-sm;
+  background-color: rgba(243, 244, 246, 0.8);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  color: #2563eb;
+}
+
+.user-message :deep(code) {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 :deep(pre code) {
-  @apply bg-transparent p-0;
+  background-color: transparent;
+  padding: 0;
+  color: #374151;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 :deep(a) {
-  @apply text-blue-600 hover:underline;
+  color: #2563eb;
+  text-decoration: none;
+  border-bottom: 1px solid #93c5fd;
+  transition: all 0.2s ease;
+  padding-bottom: 1px;
+}
+
+.user-message :deep(a) {
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.5);
+}
+
+:deep(a:hover) {
+  color: #1d4ed8;
+  border-bottom-color: #2563eb;
+  border-bottom-width: 2px;
+}
+
+.user-message :deep(a:hover) {
+  color: #ffffff;
+  border-bottom-color: #ffffff;
 }
 
 :deep(ul),
 :deep(ol) {
-  @apply pl-4 my-0.5;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
 }
 
 :deep(ul) {
-  @apply list-disc;
+  list-style-type: disc;
 }
 
 :deep(ol) {
-  @apply list-decimal;
+  list-style-type: decimal;
+}
+
+:deep(li) {
+  margin-bottom: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+/* 嵌套列表的间距更小 */
+:deep(li) :deep(ul),
+:deep(li) :deep(ol) {
+  margin: 0.25rem 0;
 }
 
 :deep(blockquote) {
-  @apply border-l-2 border-gray-300 pl-2 italic my-0.5;
+  border-left: 4px solid #3b82f6;
+  padding: 0.5rem 1rem;
+  color: #4b5563;
+  font-style: italic;
+  margin: 0.5rem 0;
+  background-color: #f8fafc;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.user-message :deep(blockquote) {
+  border-left-color: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 :deep(table) {
-  @apply border-collapse border border-gray-300 my-0.5 text-sm;
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 :deep(th),
 :deep(td) {
-  @apply border border-gray-300 px-1 py-0.5;
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
 }
 
 :deep(th) {
-  @apply bg-gray-100;
+  background-color: #f3f4f6;
+  font-weight: 600;
 }
-/* v-md-editor 样式调整 */
+
+:deep(tr:nth-child(even)) {
+  background-color: #f9fafb;
+}
+
+/* 调整Markdown内容样式 - 更现代化的排版 */
 .message-markdown {
   max-width: 100%;
   font-size: 0.95rem;
+  line-height: 1.4;
+  color: inherit;
 }
 
-/* 移除v-md-editor默认边框和背景 */
-.message-markdown :deep(.v-md-editor) {
-  border: none !important;
-  background-color: transparent !important;
-  box-shadow: none !important;
-}
-
-/* 移除v-md-editor默认内边距 */
-.message-markdown :deep(.v-md-editor__preview) {
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-/* 调整段落间距 */
+/* 调整段落间距 - 更紧凑 */
 .message-markdown :deep(p) {
-  margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
+  margin: 0.1rem 0;
+  padding: 0;
 }
 
-/* 调整标题样式 */
+/* 减少换行的间距 */
+.message-markdown :deep(br) {
+  content: "";
+  display: block;
+  margin: 0.05rem 0;
+}
+
+/* 调整标题样式 - 更现代的排版 */
 .message-markdown :deep(h1),
 .message-markdown :deep(h2),
 .message-markdown :deep(h3),
 .message-markdown :deep(h4),
 .message-markdown :deep(h5),
 .message-markdown :deep(h6) {
-  margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
+  margin: 0.5rem 0 0.25rem 0;
   font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: inherit;
 }
 
 .message-markdown :deep(h1) {
   font-size: 1.25rem;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  padding-bottom: 0.25rem;
+  margin-top: 0.75rem;
 }
+
 .message-markdown :deep(h2) {
-  font-size: 1.15rem;
+  font-size: 1.125rem;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  padding-bottom: 0.25rem;
+  margin-top: 0.75rem;
 }
+
 .message-markdown :deep(h3) {
   font-size: 1.05rem;
+  margin-top: 0.5rem;
 }
+
 .message-markdown :deep(h4),
 .message-markdown :deep(h5),
 .message-markdown :deep(h6) {
   font-size: 1rem;
+  margin-top: 0.5rem;
 }
 
-/* 使列表更加紧凑 */
-.message-markdown :deep(li) {
-  margin-top: 0.125rem;
-  margin-bottom: 0.125rem;
-}
-
-/* 调整代码块样式 */
+/* 代码块语法高亮 - 更现代的设计 */
 .message-markdown :deep(pre) {
-  font-size: 0.875rem;
-  margin: 0.5rem 0;
-  border-radius: 4px;
-  background-color: #f3f4f6; /* 更明显的背景色 */
-  border: 1px solid #e5e7eb;
+  position: relative;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
 }
 
-/* 调整表格样式 */
-.message-markdown :deep(table) {
-  font-size: 0.875rem;
-  margin: 0.5rem 0;
+.message-markdown :deep(pre):hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+  border-color: #cbd5e1;
+}
+
+/* 代码块语言标签 */
+.message-markdown :deep(pre)::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  background-color: #e2e8f0;
+  color: #475569;
+  border-bottom-left-radius: 0.375rem;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 </style>
 
@@ -683,24 +914,27 @@ export default {
   animation-fill-mode: forwards; /* 保持动画结束时的状态 */
 }
 
-/* 代码块复制按钮样式 */
+/* 代码块复制按钮样式 - 更现代的设计 */
 .code-copy-button {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  background-color: rgba(255, 255, 255, 0.8);
+  top: 0.5rem;
+  right: 2.5rem; /* 避免与语言标签重叠 */
+  background-color: rgba(255, 255, 255, 0.9);
   border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  padding: 0px;
-  width: 14px;
-  height: 14px;
+  border-radius: 0.375rem;
+  padding: 0.25rem;
+  width: 1.75rem;
+  height: 1.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s;
-  font-size: 8px;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(4px);
 }
 
 pre:hover .code-copy-button {
@@ -709,35 +943,70 @@ pre:hover .code-copy-button {
 
 .code-copy-button:hover {
   background-color: #f1f5f9;
+  transform: scale(1.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* 复制成功提示样式 */
+.code-copy-button:active {
+  transform: scale(0.95);
+  background-color: #e2e8f0;
+}
+
+/* 复制成功提示样式 - 更现代的设计 */
 .copy-success-tooltip {
   position: absolute;
-  top: -20px;
+  top: -2rem;
   right: 0;
-  background-color: #4b5563;
+  background-color: #2563eb;
   color: white;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
   white-space: nowrap;
+  animation: fadeInOut 2s ease-in-out;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.025em;
 }
 
-/* 全局复制通知样式 */
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+}
+
+/* 全局复制通知样式 - 更现代的设计 */
 .copy-notification {
   position: fixed;
   top: 20px;
   left: 50%;
   transform: translateX(-50%) translateY(-20px);
-  background-color: #4b5563;
+  background-color: #2563eb;
   color: white;
-  padding: 8px 16px;
-  border-radius: 4px;
+  padding: 10px 20px;
+  border-radius: 8px;
   font-size: 14px;
+  font-weight: 500;
   z-index: 9999;
   opacity: 0;
-  transition: opacity 0.3s, transform 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .copy-notification.show {
@@ -745,12 +1014,13 @@ pre:hover .code-copy-button {
   transform: translateX(-50%) translateY(0);
 }
 
-/* 打字动画点 */
+/* 打字动画点 - 更现代的设计 */
 .typing-dots {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
+  padding: 0.5rem 0;
 }
 
 .typing-dots span {
@@ -758,8 +1028,17 @@ pre:hover .code-copy-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #a0aec0;
-  animation: typingAnimation 1.4s infinite ease-in-out both;
+  background-color: #3b82f6;
+  animation: typingAnimation 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1) both;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.ai-message .typing-dots span {
+  background-color: #3b82f6;
+}
+
+.user-message .typing-dots span {
+  background-color: rgba(255, 255, 255, 0.8);
 }
 
 .typing-dots span:nth-child(1) {
@@ -778,7 +1057,7 @@ pre:hover .code-copy-button {
     opacity: 0.6;
   }
   40% {
-    transform: scale(1);
+    transform: scale(1.1);
     opacity: 1;
   }
 }

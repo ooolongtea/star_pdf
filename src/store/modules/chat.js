@@ -215,7 +215,7 @@ const actions = {
   },
 
   // 发送消息
-  async sendMessage({ commit, state }, { conversationId, message, image }) {
+  async sendMessage({ commit, state }, { conversationId, message, image, enableThinking }) {
     // 定义在函数作用域的开头，这样在整个函数中都可以访问
     const tempAiMessageId = 'temp-ai-' + Date.now();
 
@@ -254,6 +254,11 @@ const actions = {
       // 如果有图片，添加到请求中
       if (image) {
         requestData.image = image;
+      }
+
+      // 如果启用思考模式，添加到请求中
+      if (enableThinking !== undefined) {
+        requestData.enable_thinking = enableThinking;
       }
 
       // 发送请求到服务器

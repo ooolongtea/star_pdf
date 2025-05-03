@@ -189,7 +189,7 @@ exports.deleteConversation = async (req, res) => {
 exports.sendMessage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { message, image } = req.body;
+    const { message, image, enable_thinking } = req.body;
 
     if (!message && !image) {
       return res.status(400).json({
@@ -197,6 +197,9 @@ exports.sendMessage = async (req, res) => {
         message: '请提供消息内容或图片'
       });
     }
+
+    // 记录是否启用思考模式
+    console.log('思考模式状态:', enable_thinking);
 
     const conversationModel = new Conversation(req.db);
     const messageModel = new Message(req.db);
@@ -260,10 +263,9 @@ exports.sendMessage = async (req, res) => {
 
     // 处理新格式的模型名称（provider:model）
     let providerId = conversation.model_name;
-    let modelId = null;
 
     if (conversation.model_name.includes(':')) {
-      [providerId, modelId] = conversation.model_name.split(':');
+      [providerId] = conversation.model_name.split(':');
     }
 
     // 获取API密钥
@@ -353,7 +355,7 @@ exports.sendMessage = async (req, res) => {
     });
 
     // 调用AI模型API
-    const aiResponse = await callAiModel(conversation.model_name, messageHistory, apiKey, apiBaseUrl);
+    const aiResponse = await callAiModel(conversation.model_name, messageHistory, apiKey, apiBaseUrl, enable_thinking);
 
     // 保存AI回复
     const savedResponse = await messageModel.create(id, 'assistant', aiResponse);
@@ -421,7 +423,7 @@ function isVisualModel(modelName) {
 }
 
 // 调用不同的AI模型API
-async function callAiModel(modelName, messages, apiKey, apiBaseUrl) {
+async function callAiModel(modelName, messages, apiKey, apiBaseUrl, enableThinking) {
   try {
     let response;
     let providerId = modelName;
@@ -434,7 +436,7 @@ async function callAiModel(modelName, messages, apiKey, apiBaseUrl) {
 
     switch (providerId) {
       case 'qwen':
-        response = await callQwenApi(messages, apiKey, apiBaseUrl, modelId);
+        response = await callQwenApi(messages, apiKey, apiBaseUrl, modelId, enableThinking);
         break;
       case 'deepseek':
         response = await callDeepseekApi(messages, apiKey, apiBaseUrl, modelId);
@@ -457,7 +459,7 @@ async function callAiModel(modelName, messages, apiKey, apiBaseUrl) {
 }
 
 // 调用通义千问API
-async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
+async function callQwenApi(messages, apiKey, apiBaseUrl, modelId, userEnableThinking) {
   try {
     // 选择模型，如果没有指定则使用默认模型
     const model = modelId || 'qwen-max';
@@ -465,58 +467,193 @@ async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
     // 检查是否是视觉模型
     const isVisual = isVisualModel(model);
 
+    // 检查是否是qwen3模型（支持思考模式）
+    const isQwen3 = model.toLowerCase().includes('qwen3');
+
+    // 是否启用思考模式（用户设置优先）
+    let enableThinking = userEnableThinking;
+
+    // 如果用户没有明确设置，使用默认值
+    if (enableThinking === undefined) {
+      // QwQ模型自动启用思考模式
+      if (model.toLowerCase().includes('qwq')) {
+        enableThinking = true;
+      }
+      // qwen3-235b-a22b模型默认启用思考模式
+      else if (isQwen3 && model.toLowerCase().includes('235b-a22b')) {
+        enableThinking = true;
+      }
+      else {
+        enableThinking = false;
+      }
+    }
+
+    // QwQ模型特殊处理
+    const isQwQ = model.toLowerCase().includes('qwq');
+
     // 构建请求参数
     const requestBody = {
       model: model,
       messages: messages
     };
 
-    // // 如果是视觉模型，可以添加额外参数
-    // if (isVisual) {
-    //   // 可以添加max_tokens等参数
-    //   requestBody.max_tokens = 1500;
-    // }
-
-    // 打印请求体，用于调试
-    console.log('通义千问API请求体:', JSON.stringify(requestBody, null, 2));
-
-    const response = await axios.post(
-      `${apiBaseUrl}/chat/completions`,
-      requestBody,
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    // 打印响应，用于调试
-    console.log('通义千问API响应:', JSON.stringify(response.data, null, 2));
-
-    // 处理响应
-    const aiMessage = response.data.choices[0].message;
-    let content = aiMessage.content;
-
-    // 处理视觉模型的多模态响应
-    if (isVisual && typeof content === 'object') {
-      // 处理多模态响应
-      const contentArray = Array.isArray(content) ? content : [content];
-
-      // 提取文本部分
-      let textParts = [];
-
-      for (const part of contentArray) {
-        if (part.type === 'text') {
-          textParts.push(part.text);
-        }
-      }
-
-      // 合并文本部分
-      content = textParts.join('\n');
+    // qwen3-235b-a22b 模型强制启用流式输出
+    if (model.toLowerCase().includes('qwen3-235b-a22b')) {
+      requestBody.stream = true;
     }
 
-    return content;
+    // 如果是qwen3模型或QwQ模型且启用思考模式，添加相关参数
+    if ((isQwen3 || isQwQ) && enableThinking) {
+      requestBody.enable_thinking = true;
+      requestBody.stream = true; // 思考模式下强制启用流式输出
+      requestBody.max_tokens = 4000; // 可选参数
+    }
+
+    // 打印请求体，用于调试
+    // console.log('通义千问API请求体:', JSON.stringify(requestBody, null, 2));
+
+    // 检查是否需要流式输出
+    if (requestBody.stream) {
+      console.log('使用流式输出模式');
+
+      // 使用流式输出模式
+      const response = await axios.post(
+        `${apiBaseUrl}/chat/completions`,
+        requestBody,
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          responseType: 'stream'
+        }
+      );
+
+      // 处理流式响应
+      return new Promise((resolve, reject) => {
+        let fullContent = '';
+        let thoughtChain = '';
+        let debugData = []; // 用于收集调试数据
+
+        response.data.on('data', (chunk) => {
+          try {
+            // 将二进制数据转换为字符串
+            const chunkStr = chunk.toString();
+
+            // 处理数据块
+            const lines = chunkStr.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+              // 跳过注释行
+              if (line.startsWith(':')) continue;
+
+              // 移除 "data: " 前缀
+              const jsonStr = line.replace(/^data: /, '');
+
+              // 跳过 [DONE] 消息
+              if (jsonStr.trim() === '[DONE]') continue;
+
+              try {
+                const data = JSON.parse(jsonStr);
+
+                // 收集调试数据
+                debugData.push(data);
+
+                // 处理思考内容
+                if (enableThinking && data.choices[0].reasoning_content) {
+                  thoughtChain = data.choices[0].reasoning_content;
+                }
+
+                // 处理内容增量
+                if (data.choices[0].delta && data.choices[0].delta.content) {
+                  fullContent += data.choices[0].delta.content;
+                }
+
+                // 处理完整消息
+                if (data.choices[0].message && data.choices[0].message.content) {
+                  fullContent = data.choices[0].message.content;
+                }
+              } catch (parseError) {
+                console.error('解析流式响应JSON错误:', parseError);
+              }
+            }
+          } catch (error) {
+            console.error('处理流式响应块错误:', error);
+          }
+        });
+
+        response.data.on('end', () => {
+          console.log('流式响应结束');
+
+          // 输出调试信息
+          console.log('API回复调试信息:');
+          console.log(JSON.stringify(debugData, null, 2));
+
+          // 如果启用了思考模式且有思考链，添加到内容中
+          if (enableThinking && thoughtChain) {
+            fullContent = `<thought>${thoughtChain}</thought>\n\n${fullContent}`;
+          }
+
+          resolve(fullContent);
+        });
+
+        response.data.on('error', (err) => {
+          console.error('流式响应错误:', err);
+          reject(err);
+        });
+      });
+    } else {
+      // 使用普通模式
+      const response = await axios.post(
+        `${apiBaseUrl}/chat/completions`,
+        requestBody,
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // 打印响应，用于调试
+      console.log('通义千问API响应:', JSON.stringify(response.data, null, 2));
+
+      // 输出调试信息
+      console.log('API回复调试信息:');
+      console.log(JSON.stringify(response.data, null, 2));
+
+      // 处理响应
+      const aiMessage = response.data.choices[0].message;
+      let content = aiMessage.content;
+      let thoughtChain = null;
+
+      // 如果启用了思考模式，提取思考内容
+      if (enableThinking && response.data.choices[0].reasoning_content) {
+        thoughtChain = response.data.choices[0].reasoning_content;
+        // 构建包含思考链和正式回复的完整响应
+        content = `<thought>${thoughtChain}</thought>\n\n${content}`;
+      }
+
+      // 处理视觉模型的多模态响应
+      if (isVisual && typeof content === 'object') {
+        // 处理多模态响应
+        const contentArray = Array.isArray(content) ? content : [content];
+
+        // 提取文本部分
+        let textParts = [];
+
+        for (const part of contentArray) {
+          if (part.type === 'text') {
+            textParts.push(part.text);
+          }
+        }
+
+        // 合并文本部分
+        content = textParts.join('\n');
+      }
+
+      return content;
+    }
   } catch (error) {
     console.error('调用通义千问API错误:', error.response?.data || error.message);
     if (error.response && error.response.data) {
@@ -525,6 +662,8 @@ async function callQwenApi(messages, apiKey, apiBaseUrl, modelId) {
     throw error;
   }
 }
+
+
 
 // 调用DeepSeek API
 async function callDeepseekApi(messages, apiKey, apiBaseUrl, modelId) {

@@ -35,12 +35,29 @@ export default {
     let timer = null;
     let currentIndex = 0;
 
-    // 打字效果函数
+    // 打字效果函数 - 优化版本，批量处理字符以提高性能
     const typeText = () => {
       if (currentIndex < props.text.length) {
-        displayedText.value = props.text.substring(0, currentIndex + 1);
-        currentIndex++;
-        timer = setTimeout(typeText, props.speed);
+        // 计算本次要添加的字符数量（批量处理）
+        const charsToAdd = Math.min(5, props.text.length - currentIndex);
+
+        // 更新显示的文本
+        displayedText.value = props.text.substring(
+          0,
+          currentIndex + charsToAdd
+        );
+        currentIndex += charsToAdd;
+
+        // 计算下一次更新的延迟时间
+        // 对于中文和标点符号，使用较长的延迟
+        const nextChar = props.text[currentIndex] || "";
+        const isChineseOrPunctuation =
+          /[\u4e00-\u9fa5]|[，。！？；：""''（）【】《》]/.test(nextChar);
+        const nextDelay = isChineseOrPunctuation
+          ? props.speed * 2
+          : props.speed;
+
+        timer = setTimeout(typeText, nextDelay);
       } else {
         isTyping.value = false;
         emit("typed");
@@ -99,7 +116,12 @@ export default {
 .typing-cursor {
   display: inline-block;
   width: 2px;
+  height: 1em;
+  background-color: #3b82f6; /* 蓝色光标 */
+  vertical-align: middle;
+  margin-left: 1px;
   animation: blink 1s step-end infinite;
+  border-radius: 1px;
 }
 
 @keyframes blink {

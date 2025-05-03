@@ -6,9 +6,10 @@ export const modelProviders = [
     base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
       { id: 'qwen-max', name: 'Qwen-Max', description: '通义千问最强大的大语言模型' },
+      { id: 'qwen3-235b-a22b', name: 'Qwen3-235B-A22B', description: '通义千问最新大模型，支持思考模式' },
       { id: 'qwen-max-longcontext', name: 'Qwen-Max-LongContext', description: '支持更长上下文的大语言模型' },
       { id: 'qwen-vl-max', name: 'Qwen-VL-Max', description: '支持视觉理解的多模态大模型' },
-      { id: 'qwen-32b', name: 'Qwen-32B', description: '仅支持通过流式输出方式调用，擅长思考' }
+      { id: 'qwq-plus', name: 'QwQ-Plus', description: '通义千问思考模式专用模型' }
     ]
   },
   {
@@ -41,7 +42,7 @@ export const modelProviders = [
 // 获取所有模型选项（扁平化列表，用于兼容旧版本）
 export const getAllModelOptions = () => {
   const options = [];
-  
+
   modelProviders.forEach(provider => {
     // 添加厂商作为顶级选项
     options.push({
@@ -49,7 +50,7 @@ export const getAllModelOptions = () => {
       label: provider.name,
       isProvider: true
     });
-    
+
     // 添加该厂商下的所有模型
     provider.models.forEach(model => {
       options.push({
@@ -60,23 +61,23 @@ export const getAllModelOptions = () => {
       });
     });
   });
-  
+
   return options;
 };
 
 // 根据模型ID获取模型信息
 export const getModelInfo = (modelId) => {
   if (!modelId) return null;
-  
+
   // 如果是复合ID (provider:model)
   if (modelId.includes(':')) {
     const [providerId, modelId] = modelId.split(':');
     const provider = modelProviders.find(p => p.id === providerId);
     if (!provider) return null;
-    
+
     const model = provider.models.find(m => m.id === modelId);
     if (!model) return null;
-    
+
     return {
       ...model,
       provider: provider.name,
@@ -84,11 +85,11 @@ export const getModelInfo = (modelId) => {
       base_url: provider.base_url
     };
   }
-  
+
   // 如果只是厂商ID
   const provider = modelProviders.find(p => p.id === modelId);
   if (!provider) return null;
-  
+
   // 返回厂商的默认模型
   const defaultModel = provider.models[0];
   return {
