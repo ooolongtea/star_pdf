@@ -7,23 +7,30 @@
       shouldAnimate ? 'animate-message-appear' : '',
     ]"
   >
-    <!-- 用户头像（右侧） - 独立于气泡 -->
+    <!-- 用户头像（右侧） - 独立于气泡，优雅设计 -->
     <div
       v-if="message.role === 'user'"
       class="absolute right-0 top-1 flex-shrink-0 z-0"
     >
       <div
-        class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
+        class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md border-2 border-white"
       >
-        <span class="text-sm font-medium">{{ userInitial }}</span>
+        <span class="text-sm font-medium tracking-wide">{{ userInitial }}</span>
       </div>
     </div>
 
-    <div class="flex items-start" style="max-width: 85%">
-      <!-- AI头像 -->
-      <div v-if="message.role === 'assistant'" class="flex-shrink-0 mr-2 mt-1">
+    <div
+      class="flex items-start"
+      :style="
+        message.role === 'user'
+          ? 'max-width: 80%; margin-right: 2.5rem;'
+          : 'max-width: 85%;'
+      "
+    >
+      <!-- AI头像 - 优雅设计 -->
+      <div v-if="message.role === 'assistant'" class="flex-shrink-0 mr-3 mt-1">
         <div
-          class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 overflow-hidden"
+          class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center text-blue-600 overflow-hidden shadow-sm border-2 border-white"
         >
           <!-- 根据当前模型显示不同的头像 -->
           <img
@@ -146,8 +153,16 @@
               :skipAnimation="!shouldAnimate"
               @typed="isTyped = true"
             />
-            <div v-else class="message-markdown">
-              <div v-html="renderMarkdown(actualContent)"></div>
+            <div
+              v-else
+              class="message-markdown"
+              :class="{ 'user-message-content': message.role === 'user' }"
+              style="display: inline-block"
+            >
+              <div
+                v-html="renderMarkdown(actualContent)"
+                :class="{ 'user-message-html': message.role === 'user' }"
+              ></div>
             </div>
 
             <!-- AI回复中的图片 -->
@@ -622,60 +637,67 @@ export default {
 </script>
 
 <style scoped>
-/* 消息气泡样式 - 更现代化的设计 */
+/* 消息气泡样式 - 优雅的极简主义设计 */
 .message-bubble {
-  border-radius: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 1.5rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   max-width: 100%;
   position: relative;
-  line-height: 1.5;
-  padding: 0.75rem 1rem !important; /* 更宽敞的内边距 */
-  transition: all 0.2s ease;
-}
-
-.message-bubble:hover {
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
+  line-height: 1.3;
+  padding: 0.5rem 0.75rem !important; /* 更紧凑的内边距 */
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  backdrop-filter: blur(10px);
+  letter-spacing: 0.01em;
 }
 
 .user-message {
-  background-color: #2563eb; /* 蓝色背景 */
+  background: linear-gradient(
+    135deg,
+    #4f46e5 0%,
+    #3b82f6 100%
+  ); /* 优雅的渐变蓝 */
   color: white;
-  border-top-right-radius: 0.25rem;
-  border-bottom-right-radius: 1rem;
+  border-top-right-radius: 0.5rem;
+  border-bottom-right-radius: 1.25rem;
   margin-right: 0.5rem;
 }
 
 .ai-message {
-  background-color: #f7f7f8; /* 浅灰色背景 */
-  color: #111827;
-  border-top-left-radius: 0.25rem;
-  border-bottom-left-radius: 1rem;
-  border: 1px solid #e5e7eb;
+  background: linear-gradient(
+    135deg,
+    #f8fafc 0%,
+    #f1f5f9 100%
+  ); /* 柔和的渐变灰 */
+  color: #1e293b;
+  border-top-left-radius: 0.5rem;
+  border-bottom-left-radius: 1.25rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 /* 添加样式以支持Markdown渲染 - 更现代化的设计 */
 :deep(pre) {
-  background-color: #f8fafc;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  margin: 0.5rem 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  margin: 0.75rem 0;
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(226, 232, 240, 0.8);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   position: relative;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 :deep(code) {
   background-color: rgba(243, 244, 246, 0.8);
-  padding: 0.125rem 0.25rem;
-  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
   font-size: 0.875rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  color: #2563eb;
+  color: #4f46e5;
+  transition: all 0.2s ease;
 }
 
 .user-message :deep(code) {
@@ -741,47 +763,62 @@ export default {
 }
 
 :deep(blockquote) {
-  border-left: 4px solid #3b82f6;
-  padding: 0.5rem 1rem;
+  border-left: 4px solid #6366f1;
+  padding: 0.75rem 1.25rem;
   color: #4b5563;
   font-style: italic;
-  margin: 0.5rem 0;
-  background-color: #f8fafc;
-  border-radius: 0.375rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin: 0.75rem 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  position: relative;
+  letter-spacing: 0.01em;
+  line-height: 1.6;
 }
 
 .user-message :deep(blockquote) {
-  border-left-color: rgba(255, 255, 255, 0.7);
-  background-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
+  border-left-color: rgba(255, 255, 255, 0.8);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 :deep(table) {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
-  margin: 0.75rem 0;
+  margin: 1rem 0;
   font-size: 0.875rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 0.75rem;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
 :deep(th),
 :deep(td) {
-  border: 1px solid #e5e7eb;
-  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  padding: 0.75rem 1rem;
   text-align: left;
 }
 
 :deep(th) {
-  background-color: #f3f4f6;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
   font-weight: 600;
+  color: #334155;
+  letter-spacing: 0.025em;
 }
 
 :deep(tr:nth-child(even)) {
-  background-color: #f9fafb;
+  background-color: rgba(248, 250, 252, 0.7);
+}
+
+:deep(tr:hover) {
+  background-color: rgba(241, 245, 249, 0.9);
 }
 
 /* 调整Markdown内容样式 - 更现代化的排版 */
@@ -798,11 +835,37 @@ export default {
   padding: 0;
 }
 
+/* 用户消息内容特殊处理，修复底部空白问题 */
+.user-message-content {
+  line-height: 1.3;
+}
+
+.user-message-content :deep(p) {
+  margin: 0;
+  padding: 0;
+  line-height: 1.3;
+}
+
+.user-message-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* 用户消息HTML内容特殊处理 */
+.user-message-html {
+  line-height: 1.3;
+  display: inline;
+}
+
 /* 减少换行的间距 */
 .message-markdown :deep(br) {
   content: "";
   display: block;
   margin: 0.05rem 0;
+}
+
+.user-message-content :deep(br) {
+  margin: 0;
+  line-height: 1.3;
 }
 
 /* 调整标题样式 - 更现代的排版 */
@@ -845,17 +908,18 @@ export default {
   margin-top: 0.5rem;
 }
 
-/* 代码块语法高亮 - 更现代的设计 */
+/* 代码块语法高亮 - 优雅的设计 */
 .message-markdown :deep(pre) {
   position: relative;
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .message-markdown :deep(pre):hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-  border-color: #cbd5e1;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  border-color: rgba(203, 213, 225, 0.9);
+  transform: translateY(-1px);
 }
 
 /* 代码块语言标签 */
@@ -864,16 +928,17 @@ export default {
   position: absolute;
   top: 0;
   right: 0;
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.75rem;
   font-size: 0.7rem;
-  background-color: #e2e8f0;
-  color: #475569;
-  border-bottom-left-radius: 0.375rem;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: white;
+  border-bottom-left-radius: 0.5rem;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-weight: 500;
-  letter-spacing: 0.025em;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-transform: uppercase;
 }
 </style>
 
@@ -896,32 +961,39 @@ export default {
   transition-duration: 200ms;
 }
 
-/* 消息出现动画 */
+/* 消息出现动画 - 优雅的设计 */
 @keyframes messageAppear {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(16px) scale(0.98);
+    filter: blur(2px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
 .animate-message-appear {
-  animation: messageAppear 0.3s ease-out forwards;
+  animation: messageAppear 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
   animation-iteration-count: 1; /* 确保动画只播放一次 */
   animation-fill-mode: forwards; /* 保持动画结束时的状态 */
+  will-change: transform, opacity, filter;
 }
 
-/* 代码块复制按钮样式 - 更现代的设计 */
+/* 代码块复制按钮样式 - 优雅的设计 */
 .code-copy-button {
   position: absolute;
   top: 0.5rem;
-  right: 2.5rem; /* 避免与语言标签重叠 */
-  background-color: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e2e8f0;
-  border-radius: 0.375rem;
+  right: 3rem; /* 避免与语言标签重叠 */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(248, 250, 252, 0.95) 100%
+  );
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 0.5rem;
   padding: 0.25rem;
   width: 1.75rem;
   height: 1.75rem;
@@ -930,97 +1002,119 @@ export default {
   justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   font-size: 0.75rem;
   z-index: 10;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(8px);
+  color: #4f46e5;
 }
 
 pre:hover .code-copy-button {
   opacity: 1;
+  transform: translateY(0);
 }
 
 .code-copy-button:hover {
-  background-color: #f1f5f9;
-  transform: scale(1.05);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(241, 245, 249, 1) 100%
+  );
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  color: #4338ca;
 }
 
 .code-copy-button:active {
-  transform: scale(0.95);
-  background-color: #e2e8f0;
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* 复制成功提示样式 - 更现代的设计 */
+/* 复制成功提示样式 - 优雅的设计 */
 .copy-success-tooltip {
   position: absolute;
-  top: -2rem;
+  top: -2.25rem;
   right: 0;
-  background-color: #2563eb;
+  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
   color: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.375rem;
+  padding: 0.375rem 1rem;
+  border-radius: 0.5rem;
   font-size: 0.75rem;
   font-weight: 500;
   white-space: nowrap;
-  animation: fadeInOut 2s ease-in-out;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(4px);
-  letter-spacing: 0.025em;
+  animation: fadeInOut 2.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+  backdrop-filter: blur(8px);
+  letter-spacing: 0.05em;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 @keyframes fadeInOut {
   0% {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translateY(8px);
   }
-  10% {
+  15% {
     opacity: 1;
     transform: translateY(0);
   }
-  90% {
+  85% {
     opacity: 1;
     transform: translateY(0);
   }
   100% {
     opacity: 0;
-    transform: translateY(-5px);
+    transform: translateY(-8px);
   }
 }
 
-/* 全局复制通知样式 - 更现代的设计 */
+/* 全局复制通知样式 - 优雅的设计 */
 .copy-notification {
   position: fixed;
-  top: 20px;
+  top: 24px;
   left: 50%;
-  transform: translateX(-50%) translateY(-20px);
-  background-color: #2563eb;
+  transform: translateX(-50%) translateY(-24px);
+  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
   color: white;
-  padding: 10px 20px;
-  border-radius: 8px;
+  padding: 12px 24px;
+  border-radius: 12px;
   font-size: 14px;
   font-weight: 500;
   z-index: 9999;
   opacity: 0;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.025em;
 }
 
 .copy-notification.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+  animation: pulse 2s infinite;
 }
 
-/* 打字动画点 - 更现代的设计 */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
+  }
+  50% {
+    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+  }
+  100% {
+    box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
+  }
+}
+
+/* 打字动画点 - 优雅的设计 */
 .typing-dots {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 0.5rem 0;
+  gap: 6px;
+  padding: 0.75rem 0;
 }
 
 .typing-dots span {
@@ -1028,17 +1122,22 @@ pre:hover .code-copy-button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #3b82f6;
-  animation: typingAnimation 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1) both;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+  animation: typingAnimation 1.6s infinite cubic-bezier(0.25, 0.8, 0.25, 1) both;
+  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
 }
 
 .ai-message .typing-dots span {
-  background-color: #3b82f6;
+  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
 }
 
 .user-message .typing-dots span {
-  background-color: rgba(255, 255, 255, 0.8);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+  box-shadow: 0 2px 4px rgba(255, 255, 255, 0.2);
 }
 
 .typing-dots span:nth-child(1) {
@@ -1053,12 +1152,13 @@ pre:hover .code-copy-button {
   0%,
   80%,
   100% {
-    transform: scale(0.6);
+    transform: scale(0.6) translateY(0);
     opacity: 0.6;
   }
   40% {
-    transform: scale(1.1);
+    transform: scale(1.2) translateY(-2px);
     opacity: 1;
+    box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
   }
 }
 </style>

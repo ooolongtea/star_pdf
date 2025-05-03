@@ -54,29 +54,36 @@
         class="h-full flex flex-col items-center justify-center text-gray-500"
       >
         <div
-          class="bg-blue-50 p-8 rounded-2xl shadow-sm border border-blue-100 max-w-md text-center"
+          class="bg-gradient-to-br from-indigo-50 to-blue-50 p-10 rounded-3xl shadow-lg border border-indigo-100 max-w-md text-center backdrop-blur-sm"
         >
-          <svg
-            class="h-20 w-20 mb-6 text-blue-400 mx-auto"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.5"
-              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-            ></path>
-          </svg>
-          <p class="text-xl font-medium text-gray-700 mb-2">开始一段新对话</p>
-          <p class="text-gray-500 mb-4">
-            选择一个现有对话或创建新对话，开始与AI助手交流
+          <div class="relative mb-8">
+            <div
+              class="absolute inset-0 bg-gradient-to-r from-indigo-400 to-blue-500 rounded-full opacity-20 blur-xl"
+            ></div>
+            <svg
+              class="h-24 w-24 mx-auto relative z-10 text-indigo-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              ></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-medium text-indigo-900 mb-3 tracking-tight">
+            开始一段新对话
+          </h2>
+          <p class="text-slate-600 mb-6 leading-relaxed">
+            选择一个现有对话或创建新对话，开始与AI助手交流，探索无限可能
           </p>
           <button
             @click="onNewChat"
-            class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm transition-all duration-200"
+            class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-md transition-all duration-300 transform hover:scale-105"
           >
             <svg
               class="h-5 w-5 mr-2"
@@ -110,16 +117,16 @@
     <div
       class="p-2 border-t bg-white shadow-lg fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out z-10 md:absolute backdrop-blur-sm"
     >
-      <!-- 模型指示器 -->
+      <!-- 模型指示器 - 优雅的设计 -->
       <div
-        class="absolute -top-8 left-4 text-xs font-medium flex items-center bg-white px-2 py-1 rounded-t-lg border border-gray-200 border-b-0 shadow-sm"
+        class="absolute -top-8 left-4 text-xs font-medium flex items-center bg-gradient-to-r from-white to-gray-50 px-3 py-1.5 rounded-t-lg border border-indigo-100 border-b-0 shadow-md backdrop-blur-sm"
       >
         <span
-          class="inline-block w-2.5 h-2.5 rounded-full bg-green-500 mr-2 animate-pulse"
+          class="inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 mr-2 animate-pulse shadow-sm"
         ></span>
         <span
           :key="currentConversation ? currentConversation.model_name : 'none'"
-          class="text-gray-700"
+          class="text-indigo-900 tracking-wide"
           >{{
             currentConversation
               ? getModelDisplayName(currentConversation.model_name)
@@ -131,24 +138,25 @@
       <!-- 现代化的输入区域 -->
       <form @submit.prevent="sendMessage" class="relative">
         <div
-          class="relative border border-gray-200 rounded-2xl shadow-sm bg-white overflow-hidden focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all duration-200 hover:shadow-md"
+          class="relative border border-indigo-100 rounded-2xl shadow-md bg-gradient-to-b from-white to-gray-50 overflow-hidden focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-200 transition-all duration-300 hover:shadow-lg"
         >
-          <!-- 文本输入区域 - 降低高度 -->
-          <div class="flex-1 min-h-[32px] p-2">
+          <!-- 文本输入区域 - 适当高度 -->
+          <div class="flex-1 min-h-[48px] p-2">
             <textarea
               v-model="messageInput"
               @keydown.enter.exact.prevent="sendMessage"
               placeholder="发送消息给AI助手..."
-              class="w-full border-0 focus:ring-0 resize-none transition-all duration-200 font-sans text-base p-0 max-h-[150px] overflow-y-auto"
-              :rows="textareaRows"
+              class="w-full border-0 focus:ring-0 resize-none transition-all duration-200 font-sans text-base p-0 max-h-[150px] overflow-y-auto overflow-x-hidden min-h-[40px] whitespace-normal break-words"
+              style="word-wrap: break-word; word-break: break-word"
+              rows="2"
               :disabled="!currentConversation || loading"
               ref="messageTextarea"
             ></textarea>
           </div>
 
-          <!-- 底部工具栏 - 降低高度 -->
+          <!-- 底部工具栏 - 优雅的设计 -->
           <div
-            class="flex items-center justify-between px-3 py-1.5 border-t border-gray-100 bg-gray-50"
+            class="flex items-center justify-between px-3 py-1.5 border-t border-indigo-50 bg-gradient-to-r from-gray-50 to-indigo-50/30"
           >
             <!-- 左侧工具 -->
             <div class="flex items-center space-x-3">
@@ -233,10 +241,10 @@
               </div>
             </div>
 
-            <!-- 发送按钮 - 降低高度 -->
+            <!-- 发送按钮 - 优雅的设计 -->
             <button
               type="submit"
-              class="inline-flex items-center justify-center w-8 h-8 rounded-full text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all duration-200 shadow-md"
+              class="inline-flex items-center justify-center w-8 h-8 rounded-full text-white bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all duration-300 shadow-md transform hover:scale-105"
               :disabled="
                 (!messageInput.trim() && !selectedImage) ||
                 !currentConversation ||
@@ -284,9 +292,14 @@
           </div>
         </div>
 
-        <!-- 底部提示 -->
-        <div class="text-xs text-center text-gray-500 mt-1 font-medium">
-          AI可能会产生不准确的信息。请谨慎使用AI生成的内容。
+        <!-- 底部提示 - 优雅的设计 -->
+        <div
+          class="text-xs text-center text-indigo-400 mt-1.5 font-medium tracking-wide"
+        >
+          <span
+            class="bg-gradient-to-r from-indigo-500 to-blue-500 bg-clip-text text-transparent"
+            >AI可能会产生不准确的信息。请谨慎使用AI生成的内容。</span
+          >
         </div>
       </form>
     </div>
@@ -384,7 +397,7 @@ export default {
     // 计算文本区域的行数
     const textareaRows = computed(() => {
       const lines = messageInput.value.split("\n").length;
-      return Math.min(Math.max(1, lines), 5); // 最小1行，最大5行
+      return Math.min(Math.max(2, lines), 5); // 最小2行，最大5行
     });
 
     // 处理图片选择
@@ -603,9 +616,9 @@ export default {
 </script>
 
 <style scoped>
-/* 自定义滚动条 - 更现代的设计 */
+/* 自定义滚动条 - 优雅的设计 */
 .overflow-y-auto::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-track {
@@ -613,26 +626,29 @@ export default {
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
+  background: linear-gradient(to bottom, #e2e8f0, #cbd5e1);
   border-radius: 9999px;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background-color: #9ca3af;
+  background: linear-gradient(to bottom, #cbd5e1, #94a3b8);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
-/* 文本区域样式 - 更现代的输入框 */
+/* 文本区域样式 - 优雅的输入框设计 */
 textarea {
   min-height: 24px;
   max-height: 200px;
-  line-height: 1.6;
+  line-height: 1.5;
   font-size: 1rem;
   outline: none !important;
   box-shadow: none !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.01em;
+  color: #1e293b;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 textarea:focus {
@@ -641,16 +657,29 @@ textarea:focus {
 }
 
 textarea::placeholder {
-  color: #9ca3af;
-  opacity: 0.8;
+  color: #94a3b8;
+  opacity: 0.9;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  transition: all 0.3s ease;
 }
 
-/* 固定底部输入区域样式 - 更精致的阴影和模糊效果 */
+textarea:focus::placeholder {
+  opacity: 0.6;
+  transform: translateX(3px);
+}
+
+/* 固定底部输入区域样式 - 优雅的设计 */
 .fixed.bottom-0,
 .absolute.bottom-0 {
-  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(229, 231, 235, 0.8);
+  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(249, 250, 251, 0.95) 100%
+  );
 }
 
 /* 消息气泡样式 - 更现代的圆角和阴影 */
@@ -660,10 +689,7 @@ textarea::placeholder {
   transition: all 0.3s ease;
 }
 
-.message-bubble:hover {
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
-}
+/* 移除了悬浮效果 */
 
 /* 用户消息气泡 */
 .user-message {
@@ -678,88 +704,110 @@ textarea::placeholder {
   border: 1px solid #e5e7eb;
 }
 
-/* 输入框容器样式 - 更现代的设计 */
+/* 输入框容器样式 - 优雅的设计 */
 .input-container {
-  border-radius: 1.25rem;
-  transition: all 0.3s ease;
-  border: 1px solid #e5e7eb;
+  border-radius: 1.5rem;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(249, 250, 251, 0.8) 100%
+  );
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .input-container:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15), 0 4px 12px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
 }
 
-/* 发送按钮动画 - 更平滑的动画 */
+/* 发送按钮动画 - 优雅的设计 */
 @keyframes sendPulse {
   0% {
-    transform: scale(1);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transform: scale(1) rotate(0deg);
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
   }
   50% {
-    transform: scale(1.15);
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+    transform: scale(1.15) rotate(5deg);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
   }
   100% {
-    transform: scale(1);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transform: scale(1) rotate(0deg);
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
   }
 }
 
 .animate-send-pulse {
-  animation: sendPulse 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: sendPulse 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-/* 工具栏按钮样式 - 更现代的设计 */
+/* 工具栏按钮样式 - 优雅的设计 */
 .toolbar-button {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
-  border-radius: 0.375rem;
-  color: #6b7280;
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 200ms;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  border-radius: 0.5rem;
+  color: #6366f1;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(248, 250, 252, 0.95) 100%
+  );
+  backdrop-filter: blur(4px);
 }
 
 .toolbar-button:hover {
-  color: #374151;
-  background-color: #f3f4f6;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  color: #4f46e5;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(241, 245, 249, 1) 100%
+  );
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
 }
 
 .toolbar-button:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-/* 添加消息加载动画 */
+/* 添加消息加载动画 - 优雅的设计 */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(16px) scale(0.98);
+    filter: blur(2px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
 .message-fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: fadeIn 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+  will-change: transform, opacity, filter;
 }
 
-/* 添加打字机效果 */
+/* 添加打字机效果 - 优雅的设计 */
 @keyframes typing {
   from {
     width: 0;
+    border-right: 2px solid #6366f1;
   }
   to {
     width: 100%;
+    border-right: 2px solid transparent;
   }
 }
 
@@ -767,6 +815,8 @@ textarea::placeholder {
   display: inline-block;
   overflow: hidden;
   white-space: nowrap;
-  animation: typing 1s steps(40, end);
+  animation: typing 1.2s steps(40, end) infinite;
+  position: relative;
+  letter-spacing: 0.01em;
 }
 </style>
