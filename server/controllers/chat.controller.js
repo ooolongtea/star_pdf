@@ -619,8 +619,8 @@ exports.callQwenApi = async function (messages, apiKey, apiBaseUrl, modelId, use
       console.log('通义千问API响应:', JSON.stringify(response.data, null, 2));
 
       // 输出调试信息
-      console.log('API回复调试信息:');
-      console.log(JSON.stringify(response.data, null, 2));
+      // console.log('API回复调试信息:');
+      // console.log(JSON.stringify(response.data, null, 2));
 
       // 处理响应
       const aiMessage = response.data.choices[0].message;

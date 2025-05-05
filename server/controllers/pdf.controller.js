@@ -6,6 +6,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const mysql = require('mysql2/promise'); // 使用 mysql2 的 promise 接口
 const archiver = require('archiver'); // 用于创建ZIP文件
+const tiktoken = require('tiktoken'); // 用于准确计算token数量
 
 // 数据库配置
 const dbConfig = {
@@ -1546,9 +1547,41 @@ exports.getImageFile = async (req, res) => {
 
 // 优化PDF文件内容
 exports.optimizePdfContent = async (req, res) => {
+  // 创建一个清理函数，用于在处理完成或发生错误时清理资源
+  const cleanupResources = (tempDirs = []) => {
+    try {
+      console.log('清理临时资源...');
+      // 清理临时目录
+      for (const dir of tempDirs) {
+        if (fs.existsSync(dir)) {
+          // 使用递归删除目录
+          fs.rmSync(dir, { recursive: true, force: true });
+          console.log(`已清理临时目录: ${dir}`);
+        }
+      }
+    } catch (error) {
+      console.error('清理资源时出错:', error);
+    }
+  };
+
+  // 根据模型提供商获取默认API基础URL的辅助函数
+  function getDefaultApiBaseUrl(provider) {
+    const baseUrls = {
+      'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      'deepseek': 'https://api.deepseek.com',
+      'baichuan': 'https://api.baichuan-ai.com/v1',
+      'chatglm': 'https://open.bigmodel.cn/api/paas/v3'
+    };
+
+    return baseUrls[provider] || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  }
+
+  let connection = null;
+  const tempDirs = []; // 用于存储需要清理的临时目录
+
   try {
     const { id } = req.params;
-    const { prompt } = req.body;
+    const { prompt, model } = req.body;
 
     if (!prompt) {
       return res.status(400).json({
@@ -1556,6 +1589,539 @@ exports.optimizePdfContent = async (req, res) => {
         message: '缺少优化提示词'
       });
     }
+
+    // 使用请求中提供的模型，如果没有则默认使用qwen-turbo-latest
+    const modelToUse = model || 'qwen-turbo-latest';
+    console.log(`使用模型: ${modelToUse} 进行优化`);
+
+    connection = await pool.getConnection();
+
+    // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+    const userId = req.user && req.user.id ? req.user.id : 1;
+
+    // 查询文件信息
+    const [rows] = await connection.execute(
+      'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '文件不存在或无权访问'
+      });
+    }
+
+    const fileInfo = rows[0];
+
+    // 检查是否过期
+    if (fileInfo.expires_at && new Date(fileInfo.expires_at) < new Date()) {
+      return res.status(403).json({
+        success: false,
+        message: '文件结果已过期'
+      });
+    }
+
+    // 获取Markdown内容
+    if (!fileInfo.markdown_path) {
+      return res.status(400).json({
+        success: false,
+        message: '找不到Markdown内容'
+      });
+    }
+
+    const markdownPath = path.join(__dirname, '../..', fileInfo.markdown_path);
+    if (!fs.existsSync(markdownPath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Markdown文件不存在'
+      });
+    }
+
+    const markdownContent = fs.readFileSync(markdownPath, 'utf8');
+
+    // 使用正则表达式提取不能改变的内容（如图片索引行）
+    console.log('提取不能改变的内容...');
+
+    // 存储需要保留的内容
+    const preservedContent = [];
+
+    // 正则表达式匹配图片索引行
+    // 匹配Markdown格式的图片引用: ![alt text](path/to/image.jpg)
+    const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+    // 匹配HTML格式的图片引用: <img src="path/to/image.jpg" alt="alt text">
+    const htmlImageRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
+
+    // 匹配可能的表格行
+    const tableRegex = /\|[^|]+\|[^|]+\|/g;
+
+    // 匹配数学公式
+    const mathRegex = /\$\$[^$]+\$\$|\$[^$\n]+\$/g;
+
+    // 处理后的内容，替换需要保留的部分为占位符
+    let processedContent = markdownContent;
+
+    // 生成唯一标识符
+    const uniqueId = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+
+    // 替换图片引用
+    processedContent = processedContent.replace(imageRegex, (match) => {
+      const placeholder = `__PRESERVED_IMAGE_${uniqueId}_${preservedContent.length}__`;
+      preservedContent.push({ placeholder, content: match });
+      return placeholder;
+    });
+
+    // 替换HTML图片标签
+    processedContent = processedContent.replace(htmlImageRegex, (match) => {
+      const placeholder = `__PRESERVED_HTML_IMAGE_${uniqueId}_${preservedContent.length}__`;
+      preservedContent.push({ placeholder, content: match });
+      return placeholder;
+    });
+
+    // 替换表格行
+    processedContent = processedContent.replace(tableRegex, (match) => {
+      // 只有当它看起来确实是表格行时才替换
+      if (match.split('|').length > 3) {
+        const placeholder = `__PRESERVED_TABLE_${uniqueId}_${preservedContent.length}__`;
+        preservedContent.push({ placeholder, content: match });
+        return placeholder;
+      }
+      return match;
+    });
+
+    // 替换数学公式
+    processedContent = processedContent.replace(mathRegex, (match) => {
+      const placeholder = `__PRESERVED_MATH_${uniqueId}_${preservedContent.length}__`;
+      preservedContent.push({ placeholder, content: match });
+      return placeholder;
+    });
+
+    console.log(`提取了 ${preservedContent.length} 个需要保留的内容`);
+
+    // 调用AI模型API进行优化
+    const chatController = require('./chat.controller');
+
+    // 构建消息
+    const messages = [
+      {
+        role: 'system',
+        content: '你是一个专业的OCR后处理专家，擅长优化从PDF提取的文本内容，修复OCR错误，调整格式，使其更易阅读。'
+      },
+      {
+        role: 'user',
+        content: `${prompt}\n\n以下是从PDF提取的原始内容，其中包含一些以__PRESERVED_开头和__结尾的占位符。你必须完全保留这些占位符，不得以任何方式修改它们的格式或内容。\n\n${processedContent}`
+      }
+    ];
+
+    // 从模型名称中提取提供商ID
+    let providerId = 'qwen'; // 默认使用qwen
+    let actualModelToUse = modelToUse;
+    let apiKey, apiBaseUrl;
+
+    // 如果模型名称包含提供商信息（如 provider:model 格式）
+    if (modelToUse.includes(':')) {
+      [providerId] = modelToUse.split(':');
+    } else if (modelToUse.toLowerCase().includes('qwen')) {
+      providerId = 'qwen';
+    } else if (modelToUse.toLowerCase().includes('deepseek')) {
+      providerId = 'deepseek';
+    } else if (modelToUse.toLowerCase().includes('baichuan')) {
+      providerId = 'baichuan';
+    } else if (modelToUse.toLowerCase().includes('chatglm')) {
+      providerId = 'chatglm';
+    }
+
+    console.log(`识别的模型提供商: ${providerId}`);
+
+    // 获取用户的API密钥
+    let apiKeyResult = await connection.execute(
+      'SELECT * FROM api_keys WHERE user_id = ? AND model_name = ? AND is_active = 1 LIMIT 1',
+      [userId, providerId]
+    );
+    let apiKeyRows = apiKeyResult[0];
+
+    if (apiKeyRows.length === 0) {
+      // 如果没有找到特定提供商的API密钥，尝试查找qwen的API密钥作为备选
+      if (providerId !== 'qwen') {
+        let fallbackResult = await connection.execute(
+          'SELECT * FROM api_keys WHERE user_id = ? AND model_name = ? AND is_active = 1 LIMIT 1',
+          [userId, 'qwen']
+        );
+        let fallbackKeyRows = fallbackResult[0];
+
+        if (fallbackKeyRows.length > 0) {
+          console.log(`未找到${providerId}模型的API密钥，使用qwen模型的API密钥作为备选`);
+          apiKey = fallbackKeyRows[0].api_key;
+          apiBaseUrl = fallbackKeyRows[0].api_base_url || getDefaultApiBaseUrl('qwen');
+
+          // 由于使用了备选API密钥，强制使用qwen模型
+          actualModelToUse = 'qwen-turbo-latest';
+          console.log(`已切换到备选模型: ${actualModelToUse}`);
+        } else {
+          if (connection) connection.release();
+          cleanupResources(tempDirs);
+          return res.status(400).json({
+            success: false,
+            message: `未找到${providerId}模型的API密钥，请在API密钥管理中添加`
+          });
+        }
+      } else {
+        if (connection) connection.release();
+        cleanupResources(tempDirs);
+        return res.status(400).json({
+          success: false,
+          message: '未找到Qwen模型的API密钥，请在API密钥管理中添加'
+        });
+      }
+    } else {
+      console.log(`找到${providerId}模型的API密钥`);
+      apiKey = apiKeyRows[0].api_key;
+      apiBaseUrl = apiKeyRows[0].api_base_url || getDefaultApiBaseUrl(providerId);
+    }
+
+    console.log('开始调用AI模型优化内容...');
+    console.log(`使用模型: ${actualModelToUse}`);
+
+    // 创建临时目录路径
+    const tempDir = path.join(__dirname, '../../uploads/temp', id);
+    const progressDir = path.join(__dirname, '../../uploads/results', id, 'progress');
+
+    // 添加到需要清理的目录列表
+    tempDirs.push(tempDir);
+
+    // 创建临时目录
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    if (!fs.existsSync(progressDir)) {
+      fs.mkdirSync(progressDir, { recursive: true });
+    }
+
+    try {
+      // 分段处理长文档，每段最大token数为6500（预留一些空间，qwen-turbo-latest最大支持8192）
+      const MAX_TOKENS_PER_SEGMENT = 6500;
+      const SEGMENT_OVERLAP_SIZE = 500; // 段落之间的重叠部分，确保上下文连贯
+
+      // 使用tiktoken准确计算token数量
+      const countTokens = (text) => {
+        try {
+          // 使用cl100k_base编码器，适用于大多数现代模型
+          const encoding = tiktoken.get_encoding("cl100k_base");
+          const tokens = encoding.encode(text);
+          return tokens.length;
+        } catch (error) {
+          console.error('tiktoken计算token错误:', error);
+
+          // 如果tiktoken失败，回退到估算方法
+          const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+          const otherChars = text.length - chineseChars;
+          return Math.ceil(chineseChars / 1.5) + Math.ceil(otherChars / 4);
+        }
+      };
+
+      // 改进的分段函数，使用滑动窗口并处理重叠
+      const splitIntoSegments = (text) => {
+        const segments = [];
+        // 按段落分割文本
+        const paragraphs = text.split('\n\n');
+
+        // 初始化第一个段落
+        let currentSegment = '';
+        let currentTokens = 0;
+        let paragraphBuffer = []; // 用于存储当前段落的缓冲区
+
+        for (let i = 0; i < paragraphs.length; i++) {
+          const paragraph = paragraphs[i];
+          const paragraphTokens = countTokens(paragraph);
+
+          // 如果单个段落就超过了最大token数，需要进一步分割
+          if (paragraphTokens > MAX_TOKENS_PER_SEGMENT) {
+            // 如果当前段落不为空，先添加到segments
+            if (currentSegment) {
+              segments.push(currentSegment);
+              currentSegment = '';
+              currentTokens = 0;
+              paragraphBuffer = [];
+            }
+
+            // 按句子分割大段落，使用更精确的句子分割正则表达式
+            const sentences = paragraph.split(/(?<=[.!?。！？])\s*/).filter(s => s.trim());
+            let sentenceSegment = '';
+            let sentenceTokens = 0;
+            let sentenceBuffer = []; // 用于存储当前句子的缓冲区
+
+            for (const sentence of sentences) {
+              const sentenceTokenCount = countTokens(sentence);
+
+              // 如果单个句子超过最大token数，需要进一步分割
+              if (sentenceTokenCount > MAX_TOKENS_PER_SEGMENT) {
+                console.log(`警告: 发现超长句子 (${sentenceTokenCount} tokens)，将被分割`);
+                // 如果当前有积累的句子，先添加到segments
+                if (sentenceSegment) {
+                  segments.push(sentenceSegment);
+                }
+
+                // 按字符分割超长句子
+                const chunkSize = Math.floor(MAX_TOKENS_PER_SEGMENT / 2); // 预估每个字符的token数
+                for (let j = 0; j < sentence.length; j += chunkSize) {
+                  const chunk = sentence.substring(j, j + chunkSize);
+                  segments.push(chunk);
+                }
+
+                sentenceSegment = '';
+                sentenceTokens = 0;
+                sentenceBuffer = [];
+              }
+              // 正常句子处理
+              else if (sentenceTokens + sentenceTokenCount <= MAX_TOKENS_PER_SEGMENT) {
+                sentenceSegment += (sentenceSegment ? ' ' : '') + sentence;
+                sentenceTokens += sentenceTokenCount;
+                sentenceBuffer.push(sentence);
+              } else {
+                // 当前段落已满，添加到segments
+                if (sentenceSegment) {
+                  segments.push(sentenceSegment);
+                }
+
+                // 开始新段落，并添加重叠部分
+                // 从缓冲区中取最后几个句子作为重叠部分
+                const overlapSentences = sentenceBuffer.slice(Math.max(0, sentenceBuffer.length - Math.ceil(SEGMENT_OVERLAP_SIZE / 100)));
+                sentenceSegment = overlapSentences.join(' ') + ' ' + sentence;
+                sentenceTokens = countTokens(sentenceSegment);
+                sentenceBuffer = [...overlapSentences, sentence];
+              }
+            }
+
+            // 添加最后一个句子段落
+            if (sentenceSegment) {
+              segments.push(sentenceSegment);
+            }
+          }
+          // 正常段落处理
+          else if (currentTokens + paragraphTokens <= MAX_TOKENS_PER_SEGMENT) {
+            currentSegment += (currentSegment ? '\n\n' : '') + paragraph;
+            currentTokens += paragraphTokens;
+            paragraphBuffer.push(paragraph);
+          } else {
+            // 当前段落已满，添加到segments
+            segments.push(currentSegment);
+
+            // 开始新段落，并添加重叠部分
+            // 从缓冲区中取最后几个段落作为重叠部分
+            const overlapParagraphs = paragraphBuffer.slice(Math.max(0, paragraphBuffer.length - Math.ceil(SEGMENT_OVERLAP_SIZE / 250)));
+            currentSegment = overlapParagraphs.join('\n\n') + '\n\n' + paragraph;
+            currentTokens = countTokens(currentSegment);
+            paragraphBuffer = [...overlapParagraphs, paragraph];
+          }
+        }
+
+        // 添加最后一个段落
+        if (currentSegment) {
+          segments.push(currentSegment);
+        }
+
+        return segments;
+      };
+
+      // 分割内容
+      const segments = splitIntoSegments(processedContent);
+      console.log(`文档已分为 ${segments.length} 个段落进行处理`);
+
+      // 创建进度目录，用于存储中间结果
+      const progressDir = path.join(__dirname, '../../uploads/results', id, 'progress');
+      if (!fs.existsSync(progressDir)) {
+        fs.mkdirSync(progressDir, { recursive: true });
+      }
+
+      // 创建临时目录，用于查看分割效果
+      const tempDir = path.join(__dirname, '../../uploads/temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // 将分割后的内容写入临时文件，添加分割标记
+      let segmentedContent = '';
+      for (let i = 0; i < segments.length; i++) {
+        // 添加分割标记
+        segmentedContent += `\n\n<!-- ================ 段落 ${i + 1}/${segments.length} 开始 ================ -->\n\n`;
+        segmentedContent += segments[i];
+        segmentedContent += `\n\n<!-- ================ 段落 ${i + 1}/${segments.length} 结束 ================ -->\n\n`;
+      }
+
+      // 保存带分割标记的内容到临时文件
+      const tempFilePath = path.join(tempDir, `${id}_segmented.md`);
+      fs.writeFileSync(tempFilePath, segmentedContent);
+      console.log(`分割后的内容已保存到: ${tempFilePath}，可用于查看分割效果`);
+
+      // 同时保存原始内容，方便对比
+      const originalTempFilePath = path.join(tempDir, `${id}_original.md`);
+      fs.writeFileSync(originalTempFilePath, markdownContent);
+      console.log(`原始内容已保存到: ${originalTempFilePath}`);
+
+      // 保存处理后但未分割的内容，方便对比
+      const processedTempFilePath = path.join(tempDir, `${id}_processed.md`);
+      fs.writeFileSync(processedTempFilePath, processedContent);
+      console.log(`处理后的内容已保存到: ${processedTempFilePath}`);
+
+      // 保存分段信息，供前端查询进度
+      const progressInfo = {
+        total_segments: segments.length,
+        completed_segments: 0,
+        status: 'processing',
+        start_time: new Date().toISOString()
+      };
+      fs.writeFileSync(
+        path.join(progressDir, 'progress.json'),
+        JSON.stringify(progressInfo, null, 2)
+      );
+
+      // 逐段处理
+      let optimizedSegments = [];
+
+      for (let i = 0; i < segments.length; i++) {
+        console.log(`处理段落 ${i + 1}/${segments.length}...`);
+
+        // 构建该段落的消息
+        const segmentMessages = [
+          {
+            role: 'system',
+            content: messages[0].content
+          },
+          {
+            role: 'user',
+            content: `${prompt}\n\n以下是从PDF提取的原始内容的第${i + 1}/${segments.length}部分，其中包含一些以__PRESERVED_开头和__结尾的占位符。这些占位符代表图片、表格和公式，请完全保留这些占位符，不要修改它们：\n\n${segments[i]}`
+          }
+        ];
+
+        // 调用AI模型处理当前段落
+        const optimizedSegment = await chatController.callQwenApi(segmentMessages, apiKey, apiBaseUrl, actualModelToUse, false);
+
+        if (!optimizedSegment) {
+          throw new Error(`段落 ${i + 1} 优化失败，AI模型返回的内容为空`);
+        }
+
+        optimizedSegments.push(optimizedSegment);
+
+        // 更新进度信息
+        progressInfo.completed_segments = i + 1;
+        fs.writeFileSync(
+          path.join(progressDir, 'progress.json'),
+          JSON.stringify(progressInfo, null, 2)
+        );
+
+        // 保存当前段落的优化结果
+        fs.writeFileSync(
+          path.join(progressDir, `segment_${i + 1}.md`),
+          optimizedSegment
+        );
+      }
+
+      // 合并所有优化后的段落
+      let optimizedContent = optimizedSegments.join('\n\n');
+      console.log('所有段落处理完成，合并结果');
+      console.log('AI模型返回内容总长度:', optimizedContent.length);
+
+      // 更新进度信息
+      progressInfo.status = 'replacing_placeholders';
+      fs.writeFileSync(
+        path.join(progressDir, 'progress.json'),
+        JSON.stringify(progressInfo, null, 2)
+      );
+
+      // 将保留的内容插回优化后的文本
+      console.log('将保留的内容插回优化后的文本...');
+      preservedContent.forEach(item => {
+        optimizedContent = optimizedContent.replace(item.placeholder, item.content);
+      });
+
+      // 检查是否有未替换的占位符
+      const placeholderPattern = new RegExp(`__PRESERVED_[A-Z]+_${uniqueId}_\\d+__`, 'g');
+      const remainingPlaceholders = optimizedContent.match(placeholderPattern);
+      if (remainingPlaceholders && remainingPlaceholders.length > 0) {
+        console.warn(`警告: 有 ${remainingPlaceholders.length} 个占位符未被替换`);
+
+        // 尝试再次替换
+        remainingPlaceholders.forEach(placeholder => {
+          const matchingItem = preservedContent.find(item => item.placeholder === placeholder);
+          if (matchingItem) {
+            optimizedContent = optimizedContent.replace(placeholder, matchingItem.content);
+          }
+        });
+      }
+
+      // 更新进度信息
+      progressInfo.status = 'completed';
+      progressInfo.end_time = new Date().toISOString();
+      fs.writeFileSync(
+        path.join(progressDir, 'progress.json'),
+        JSON.stringify(progressInfo, null, 2)
+      );
+
+      // 创建优化结果目录
+      const optimizedDir = path.join(__dirname, '../../uploads/results', id, 'optimized');
+      if (!fs.existsSync(optimizedDir)) {
+        fs.mkdirSync(optimizedDir, { recursive: true });
+      }
+
+      // 保存优化后的内容
+      const optimizedPath = path.join(optimizedDir, `${path.basename(markdownPath, '.md')}_optimized.md`);
+      fs.writeFileSync(optimizedPath, optimizedContent);
+
+      console.log('优化内容已保存到:', optimizedPath);
+
+      // 更新数据库中的优化路径
+      const relativeOptimizedPath = path.relative(path.join(__dirname, '../..'), optimizedPath);
+      await connection.execute(
+        'UPDATE pdf_files SET optimized_markdown_path = ? WHERE id = ?',
+        [relativeOptimizedPath, id]
+      );
+
+      // 返回优化后的内容
+      res.status(200).json({
+        success: true,
+        message: '内容优化成功',
+        data: optimizedContent
+      });
+    } catch (error) {
+      console.error('调用AI模型错误:', error);
+      console.error('错误详情:', error.response?.data || error.message);
+
+      // 检查是否是API密钥错误
+      if (error.response?.data?.error?.code === 'InvalidApiKey') {
+        return res.status(400).json({
+          success: false,
+          message: 'API密钥无效，请在API密钥管理中更新',
+          error: error.message
+        });
+      }
+
+      // 检查是否是配额不足
+      if (error.response?.data?.error?.code === 'QuotaExceeded') {
+        return res.status(400).json({
+          success: false,
+          message: 'API配额已用尽，请稍后再试或更新API密钥',
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        message: '调用AI模型失败: ' + (error.message || '未知错误'),
+        error: error.message
+      });
+    }
+  } finally {
+    if (connection) connection.release();
+    // 清理临时资源
+    cleanupResources(tempDirs);
+  }
+};
+
+// 获取优化进度
+exports.getOptimizationProgress = async (req, res) => {
+  try {
+    const { id } = req.params;
 
     const connection = await pool.getConnection();
     try {
@@ -1575,150 +2141,58 @@ exports.optimizePdfContent = async (req, res) => {
         });
       }
 
-      const fileInfo = rows[0];
+      // 检查进度文件是否存在
+      const progressPath = path.join(__dirname, '../../uploads/results', id, 'progress', 'progress.json');
 
-      // 检查是否过期
-      if (fileInfo.expires_at && new Date(fileInfo.expires_at) < new Date()) {
-        return res.status(403).json({
-          success: false,
-          message: '文件结果已过期'
+      if (!fs.existsSync(progressPath)) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            status: 'not_started',
+            message: '优化尚未开始'
+          }
         });
       }
 
-      // 获取Markdown内容
-      if (!fileInfo.markdown_path) {
-        return res.status(400).json({
-          success: false,
-          message: '找不到Markdown内容'
-        });
+      // 读取进度信息
+      const progressInfo = JSON.parse(fs.readFileSync(progressPath, 'utf8'));
+
+      // 如果已完成，检查是否有优化后的内容
+      if (progressInfo.status === 'completed') {
+        const fileInfo = rows[0];
+        if (fileInfo.optimized_markdown_path) {
+          progressInfo.optimized_path = fileInfo.optimized_markdown_path;
+        }
       }
 
-      const markdownPath = path.join(__dirname, '../..', fileInfo.markdown_path);
-      if (!fs.existsSync(markdownPath)) {
-        return res.status(404).json({
-          success: false,
-          message: 'Markdown文件不存在'
-        });
+      // 如果正在处理中，获取已完成段落的内容
+      if (progressInfo.status === 'processing' && progressInfo.completed_segments > 0) {
+        const completedSegments = [];
+        for (let i = 1; i <= progressInfo.completed_segments; i++) {
+          const segmentPath = path.join(__dirname, '../../uploads/results', id, 'progress', `segment_${i}.md`);
+          if (fs.existsSync(segmentPath)) {
+            const segmentContent = fs.readFileSync(segmentPath, 'utf8');
+            completedSegments.push(segmentContent);
+          }
+        }
+
+        if (completedSegments.length > 0) {
+          progressInfo.completed_content = completedSegments.join('\n\n');
+        }
       }
 
-      const markdownContent = fs.readFileSync(markdownPath, 'utf8');
-
-      // 调用AI模型API进行优化
-      const chatController = require('./chat.controller');
-
-      // 构建消息
-      const messages = [
-        {
-          role: 'system',
-          content: '你是一个专业的OCR后处理专家，擅长优化从PDF提取的文本内容，修复OCR错误，调整格式，使其更易阅读。'
-        },
-        {
-          role: 'user',
-          content: `${prompt}\n\n以下是从PDF提取的原始内容：\n\n${markdownContent}`
-        }
-      ];
-
-      // 调用AI模型
-      try {
-        // 获取用户的API密钥
-        const [apiKeyRows] = await connection.execute(
-          'SELECT * FROM api_keys WHERE user_id = ? AND provider_id = ? LIMIT 1',
-          [userId, 'qwen']
-        );
-
-        if (apiKeyRows.length === 0) {
-          return res.status(400).json({
-            success: false,
-            message: '未找到Qwen模型的API密钥，请在API密钥管理中添加'
-          });
-        }
-
-        const apiKey = apiKeyRows[0].api_key;
-        const apiBaseUrl = apiKeyRows[0].api_base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-
-        console.log('开始调用AI模型优化内容...');
-        console.log('使用模型: qwen3-235b-a22b');
-
-        try {
-          // 调用AI模型
-          const optimizedContent = await chatController.callQwenApi(messages, apiKey, apiBaseUrl, 'qwen3-235b-a22b', false);
-
-          // 检查优化内容是否有效
-          if (!optimizedContent) {
-            throw new Error('AI模型返回的内容为空');
-          }
-
-          console.log('AI模型返回内容长度:', optimizedContent.length);
-
-          // 创建优化结果目录
-          const optimizedDir = path.join(__dirname, '../../uploads/results', id, 'optimized');
-          if (!fs.existsSync(optimizedDir)) {
-            fs.mkdirSync(optimizedDir, { recursive: true });
-          }
-
-          // 保存优化后的内容
-          const optimizedPath = path.join(optimizedDir, `${path.basename(markdownPath, '.md')}_optimized.md`);
-          fs.writeFileSync(optimizedPath, optimizedContent);
-
-          console.log('优化内容已保存到:', optimizedPath);
-
-          // 更新数据库中的优化路径
-          const relativeOptimizedPath = path.relative(path.join(__dirname, '../..'), optimizedPath);
-          await connection.execute(
-            'UPDATE pdf_files SET optimized_markdown_path = ? WHERE id = ?',
-            [relativeOptimizedPath, id]
-          );
-
-          // 返回优化后的内容
-          res.status(200).json({
-            success: true,
-            message: '内容优化成功',
-            data: optimizedContent
-          });
-        } catch (error) {
-          console.error('调用AI模型错误:', error);
-          console.error('错误详情:', error.response?.data || error.message);
-
-          // 检查是否是API密钥错误
-          if (error.response?.data?.error?.code === 'InvalidApiKey') {
-            return res.status(400).json({
-              success: false,
-              message: 'API密钥无效，请在API密钥管理中更新',
-              error: error.message
-            });
-          }
-
-          // 检查是否是配额不足
-          if (error.response?.data?.error?.code === 'QuotaExceeded') {
-            return res.status(400).json({
-              success: false,
-              message: 'API配额已用尽，请稍后再试或更新API密钥',
-              error: error.message
-            });
-          }
-
-          return res.status(500).json({
-            success: false,
-            message: '调用AI模型失败: ' + (error.message || '未知错误'),
-            error: error.message
-          });
-        }
-      } finally {
-        connection.release();
-      }
-    } catch (error) {
-      console.error('优化PDF内容错误:', error);
-      res.status(500).json({
-        success: false,
-        message: '优化PDF内容失败',
-        error: error.message
+      return res.status(200).json({
+        success: true,
+        data: progressInfo
       });
+    } finally {
+      connection.release();
     }
   } catch (error) {
-    console.error('优化PDF内容错误:', error);
+    console.error('获取优化进度错误:', error);
     res.status(500).json({
       success: false,
-      message: '优化PDF内容失败',
+      message: '获取优化进度失败',
       error: error.message
     });
   }
@@ -1785,6 +2259,8 @@ exports.getOptimizedContent = async (req, res) => {
     });
   }
 };
+
+
 
 // 下载优化后的内容
 exports.downloadOptimizedContent = async (req, res) => {

@@ -33,6 +33,17 @@ VueMarkdownEditor.use(vuepressTheme, {
     codeHighlightExtensionMap: {
         vue: 'html',
         typescript: 'js'
+    },
+    // 减少ResizeObserver错误的配置
+    config: {
+        // 禁用自动调整高度
+        autoHeightEnabled: false,
+        // 禁用自动滚动
+        autoScrollEnabled: false,
+        // 禁用自动聚焦
+        autofocus: false,
+        // 禁用拖拽调整大小
+        enableResizeObserver: false
     }
 });
 
@@ -43,8 +54,16 @@ window.ResizeObserver = class ResizeObserver extends originalResizeObserver {
         super((entries, observer) => {
             // 防止 ResizeObserver 循环错误
             window.requestAnimationFrame(() => {
-                if (!Array.isArray(entries)) return;
-                callback(entries, observer);
+                try {
+                    if (!Array.isArray(entries)) return;
+                    callback(entries, observer);
+                } catch (e) {
+                    if (e.message && e.message.includes('ResizeObserver')) {
+                        console.log('已忽略ResizeObserver回调错误');
+                    } else {
+                        throw e;
+                    }
+                }
             });
         });
     }
@@ -55,9 +74,30 @@ window.addEventListener('error', (event) => {
     if (event.message && event.message.includes('ResizeObserver')) {
         event.stopImmediatePropagation();
         event.preventDefault();
+        console.log('已忽略ResizeObserver错误');
         return false;
     }
 }, true);
+
+// 处理未捕获的Promise错误
+window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason && typeof event.reason.message === 'string' &&
+        event.reason.message.includes('ResizeObserver')) {
+        event.preventDefault();
+        console.log('已忽略ResizeObserver Promise错误');
+    }
+});
+
+// 定期检查并移除错误覆盖层
+const removeErrorOverlay = () => {
+    const overlay = document.getElementById('webpack-dev-server-client-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+};
+
+// 每秒检查一次错误覆盖层
+setInterval(removeErrorOverlay, 1000);
 
 // 创建Vue应用
 const app = createApp(App);

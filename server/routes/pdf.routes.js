@@ -37,10 +37,15 @@ router.post('/files/batch-download', pdfController.downloadMultipleResults);
 // 优化PDF文件内容
 router.post('/files/:id/optimize', pdfController.optimizePdfContent);
 
+// 获取优化进度
+router.get('/files/:id/optimize/progress', pdfController.getOptimizationProgress);
+
 // 获取优化后的内容
 router.get('/files/:id/optimized', pdfController.getOptimizedContent);
 
 // 下载优化后的内容
 router.get('/files/:id/download-optimized', pdfController.downloadOptimizedContent);
+
+
 
 module.exports = router;
