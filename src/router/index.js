@@ -14,6 +14,7 @@ import Account from '../views/Account.vue';
 import ApiKeys from '../views/ApiKeys.vue';
 import Chat from '../views/Chat.vue';
 import PdfConverter from '../views/PdfConverter.vue';
+import PdfOptimizer from '../views/PdfOptimizer.vue';
 import NotFound from '../views/NotFound.vue';
 
 // 路由配置
@@ -96,6 +97,12 @@ const routes = [
     path: '/pdf-converter',
     name: 'PdfConverter',
     component: PdfConverter,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/pdf-optimizer/:id',
+    name: 'PdfOptimizer',
+    component: PdfOptimizer,
     meta: { requiresAuth: true }
   },
   {

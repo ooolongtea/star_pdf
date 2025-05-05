@@ -34,4 +34,13 @@ router.get('/files/:id/download-all', pdfController.downloadAllResults);
 // 批量下载多个文件的结果（打包为ZIP）
 router.post('/files/batch-download', pdfController.downloadMultipleResults);
 
+// 优化PDF文件内容
+router.post('/files/:id/optimize', pdfController.optimizePdfContent);
+
+// 获取优化后的内容
+router.get('/files/:id/optimized', pdfController.getOptimizedContent);
+
+// 下载优化后的内容
+router.get('/files/:id/download-optimized', pdfController.downloadOptimizedContent);
+
 module.exports = router;

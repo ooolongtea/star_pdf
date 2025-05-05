@@ -256,6 +256,7 @@ async function initDatabase() {
           original_filename VARCHAR(255) NOT NULL,
           file_type VARCHAR(50) NOT NULL,
           markdown_path VARCHAR(255),
+          optimized_markdown_path VARCHAR(255),
           formulas_path VARCHAR(255),
           formulas_count INT DEFAULT 0,
           status VARCHAR(50) DEFAULT 'processing',
@@ -263,6 +264,24 @@ async function initDatabase() {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
       `);
+
+      // 检查是否需要添加optimized_markdown_path列
+      const [columns] = await connection.execute(`
+        SELECT COLUMN_NAME
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = 'patent_extractor'
+        AND TABLE_NAME = 'pdf_files'
+        AND COLUMN_NAME = 'optimized_markdown_path'
+      `);
+
+      // 如果列不存在，则添加
+      if (columns.length === 0) {
+        console.log('添加 optimized_markdown_path 列...');
+        await connection.execute(`
+          ALTER TABLE pdf_files
+          ADD COLUMN optimized_markdown_path VARCHAR(255) AFTER markdown_path
+        `);
+      }
     }
 
     connection.release();
@@ -1520,6 +1539,353 @@ exports.getImageFile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '获取图片文件失败',
+      error: error.message
+    });
+  }
+};
+
+// 优化PDF文件内容
+exports.optimizePdfContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少优化提示词'
+      });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+      const userId = req.user && req.user.id ? req.user.id : 1;
+
+      // 查询文件信息
+      const [rows] = await connection.execute(
+        'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: '文件不存在或无权访问'
+        });
+      }
+
+      const fileInfo = rows[0];
+
+      // 检查是否过期
+      if (fileInfo.expires_at && new Date(fileInfo.expires_at) < new Date()) {
+        return res.status(403).json({
+          success: false,
+          message: '文件结果已过期'
+        });
+      }
+
+      // 获取Markdown内容
+      if (!fileInfo.markdown_path) {
+        return res.status(400).json({
+          success: false,
+          message: '找不到Markdown内容'
+        });
+      }
+
+      const markdownPath = path.join(__dirname, '../..', fileInfo.markdown_path);
+      if (!fs.existsSync(markdownPath)) {
+        return res.status(404).json({
+          success: false,
+          message: 'Markdown文件不存在'
+        });
+      }
+
+      const markdownContent = fs.readFileSync(markdownPath, 'utf8');
+
+      // 调用AI模型API进行优化
+      const chatController = require('./chat.controller');
+
+      // 构建消息
+      const messages = [
+        {
+          role: 'system',
+          content: '你是一个专业的OCR后处理专家，擅长优化从PDF提取的文本内容，修复OCR错误，调整格式，使其更易阅读。'
+        },
+        {
+          role: 'user',
+          content: `${prompt}\n\n以下是从PDF提取的原始内容：\n\n${markdownContent}`
+        }
+      ];
+
+      // 调用AI模型
+      try {
+        // 获取用户的API密钥
+        const [apiKeyRows] = await connection.execute(
+          'SELECT * FROM api_keys WHERE user_id = ? AND provider_id = ? LIMIT 1',
+          [userId, 'qwen']
+        );
+
+        if (apiKeyRows.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: '未找到Qwen模型的API密钥，请在API密钥管理中添加'
+          });
+        }
+
+        const apiKey = apiKeyRows[0].api_key;
+        const apiBaseUrl = apiKeyRows[0].api_base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
+        console.log('开始调用AI模型优化内容...');
+        console.log('使用模型: qwen3-235b-a22b');
+
+        try {
+          // 调用AI模型
+          const optimizedContent = await chatController.callQwenApi(messages, apiKey, apiBaseUrl, 'qwen3-235b-a22b', false);
+
+          // 检查优化内容是否有效
+          if (!optimizedContent) {
+            throw new Error('AI模型返回的内容为空');
+          }
+
+          console.log('AI模型返回内容长度:', optimizedContent.length);
+
+          // 创建优化结果目录
+          const optimizedDir = path.join(__dirname, '../../uploads/results', id, 'optimized');
+          if (!fs.existsSync(optimizedDir)) {
+            fs.mkdirSync(optimizedDir, { recursive: true });
+          }
+
+          // 保存优化后的内容
+          const optimizedPath = path.join(optimizedDir, `${path.basename(markdownPath, '.md')}_optimized.md`);
+          fs.writeFileSync(optimizedPath, optimizedContent);
+
+          console.log('优化内容已保存到:', optimizedPath);
+
+          // 更新数据库中的优化路径
+          const relativeOptimizedPath = path.relative(path.join(__dirname, '../..'), optimizedPath);
+          await connection.execute(
+            'UPDATE pdf_files SET optimized_markdown_path = ? WHERE id = ?',
+            [relativeOptimizedPath, id]
+          );
+
+          // 返回优化后的内容
+          res.status(200).json({
+            success: true,
+            message: '内容优化成功',
+            data: optimizedContent
+          });
+        } catch (error) {
+          console.error('调用AI模型错误:', error);
+          console.error('错误详情:', error.response?.data || error.message);
+
+          // 检查是否是API密钥错误
+          if (error.response?.data?.error?.code === 'InvalidApiKey') {
+            return res.status(400).json({
+              success: false,
+              message: 'API密钥无效，请在API密钥管理中更新',
+              error: error.message
+            });
+          }
+
+          // 检查是否是配额不足
+          if (error.response?.data?.error?.code === 'QuotaExceeded') {
+            return res.status(400).json({
+              success: false,
+              message: 'API配额已用尽，请稍后再试或更新API密钥',
+              error: error.message
+            });
+          }
+
+          return res.status(500).json({
+            success: false,
+            message: '调用AI模型失败: ' + (error.message || '未知错误'),
+            error: error.message
+          });
+        }
+      } finally {
+        connection.release();
+      }
+    } catch (error) {
+      console.error('优化PDF内容错误:', error);
+      res.status(500).json({
+        success: false,
+        message: '优化PDF内容失败',
+        error: error.message
+      });
+    }
+  } catch (error) {
+    console.error('优化PDF内容错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '优化PDF内容失败',
+      error: error.message
+    });
+  }
+};
+
+// 获取优化后的内容
+exports.getOptimizedContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const connection = await pool.getConnection();
+    try {
+      // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+      const userId = req.user && req.user.id ? req.user.id : 1;
+
+      // 查询文件信息
+      const [rows] = await connection.execute(
+        'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: '文件不存在或无权访问'
+        });
+      }
+
+      const fileInfo = rows[0];
+
+      // 检查是否有优化后的内容
+      if (!fileInfo.optimized_markdown_path) {
+        return res.status(404).json({
+          success: false,
+          message: '找不到优化后的内容'
+        });
+      }
+
+      // 读取优化后的内容
+      const optimizedPath = path.join(__dirname, '../..', fileInfo.optimized_markdown_path);
+      if (!fs.existsSync(optimizedPath)) {
+        return res.status(404).json({
+          success: false,
+          message: '优化后的文件不存在'
+        });
+      }
+
+      const optimizedContent = fs.readFileSync(optimizedPath, 'utf8');
+
+      // 返回优化后的内容
+      res.status(200).json({
+        success: true,
+        data: optimizedContent
+      });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('获取优化内容错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取优化内容失败',
+      error: error.message
+    });
+  }
+};
+
+// 下载优化后的内容
+exports.downloadOptimizedContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const connection = await pool.getConnection();
+    try {
+      // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+      const userId = req.user && req.user.id ? req.user.id : 1;
+
+      // 查询文件信息
+      const [rows] = await connection.execute(
+        'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: '文件不存在或无权访问'
+        });
+      }
+
+      const fileInfo = rows[0];
+
+      // 检查是否有优化后的内容
+      if (!fileInfo.optimized_markdown_path) {
+        return res.status(404).json({
+          success: false,
+          message: '找不到优化后的内容'
+        });
+      }
+
+      // 读取优化后的内容
+      const optimizedPath = path.join(__dirname, '../..', fileInfo.optimized_markdown_path);
+      if (!fs.existsSync(optimizedPath)) {
+        return res.status(404).json({
+          success: false,
+          message: '优化后的文件不存在'
+        });
+      }
+
+      // 处理可能的文件名编码问题
+      let originalFilename = fileInfo.original_filename;
+      try {
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
+        }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
+        }
+      } catch (error) {
+        console.error('文件名解码错误:', error);
+        // 如果解码失败，使用原始文件名
+      }
+
+      // 提取原始文件名（不带扩展名）
+      const fileNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
+      // 确保文件名不包含非法字符
+      const safeFileName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, '_');
+      const downloadFileName = `${safeFileName}_优化结果.md`;
+
+      // 发送文件
+      res.download(optimizedPath, downloadFileName);
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('下载优化内容错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '下载优化内容失败',
       error: error.message
     });
   }

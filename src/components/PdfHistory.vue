@@ -222,6 +222,14 @@
                   </button>
                   <button
                     v-if="file.status === 'completed'"
+                    @click="optimizeFile(file)"
+                    class="text-indigo-600 hover:text-indigo-900"
+                    title="使用AI优化OCR结果"
+                  >
+                    优化
+                  </button>
+                  <button
+                    v-if="file.status === 'completed'"
                     @click="downloadAllResults(file.id)"
                     class="text-green-600 hover:text-green-900"
                   >
@@ -371,7 +379,28 @@
             </div>
           </div>
         </div>
-        <div class="px-6 py-4 border-t flex justify-end">
+        <div class="px-6 py-4 border-t flex justify-between">
+          <button
+            v-if="selectedFile && selectedFile.status === 'completed'"
+            @click="optimizeFile(selectedFile)"
+            class="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-md hover:from-blue-600 hover:to-indigo-700 shadow-sm flex items-center"
+          >
+            <svg
+              class="w-4 h-4 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              ></path>
+            </svg>
+            AI优化内容
+          </button>
           <button
             @click="closePreview"
             class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
@@ -388,11 +417,13 @@
 import { ref, onMounted, nextTick, watch, computed } from "vue";
 import axios from "axios";
 import { useStore } from "vuex";
+import { useRouter } from "vue-router";
 
 export default {
   name: "PdfHistory",
   setup() {
     const store = useStore();
+    const router = useRouter();
 
     // 文件列表
     const files = ref([]);
@@ -611,6 +642,11 @@ export default {
           err.response?.data?.message || "删除失败，请稍后重试"
         );
       }
+    };
+
+    // 跳转到优化页面
+    const optimizeFile = (file) => {
+      router.push({ name: "PdfOptimizer", params: { id: file.id } });
     };
 
     // 格式化文件大小
@@ -937,6 +973,7 @@ export default {
       loadFiles,
       viewFile,
       closePreview,
+      optimizeFile,
       downloadAllResults,
       downloadSingleFile,
       deleteFile,

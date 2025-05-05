@@ -436,7 +436,7 @@ async function callAiModel(modelName, messages, apiKey, apiBaseUrl, enableThinki
 
     switch (providerId) {
       case 'qwen':
-        response = await callQwenApi(messages, apiKey, apiBaseUrl, modelId, enableThinking);
+        response = await exports.callQwenApi(messages, apiKey, apiBaseUrl, modelId, enableThinking);
         break;
       case 'deepseek':
         response = await callDeepseekApi(messages, apiKey, apiBaseUrl, modelId);
@@ -459,7 +459,7 @@ async function callAiModel(modelName, messages, apiKey, apiBaseUrl, enableThinki
 }
 
 // 调用通义千问API
-async function callQwenApi(messages, apiKey, apiBaseUrl, modelId, userEnableThinking) {
+exports.callQwenApi = async function (messages, apiKey, apiBaseUrl, modelId, userEnableThinking) {
   try {
     // 选择模型，如果没有指定则使用默认模型
     const model = modelId || 'qwen-max';

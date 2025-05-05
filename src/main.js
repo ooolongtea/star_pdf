@@ -36,6 +36,29 @@ VueMarkdownEditor.use(vuepressTheme, {
     }
 });
 
+// 全局处理 ResizeObserver 错误
+const originalResizeObserver = window.ResizeObserver;
+window.ResizeObserver = class ResizeObserver extends originalResizeObserver {
+    constructor(callback) {
+        super((entries, observer) => {
+            // 防止 ResizeObserver 循环错误
+            window.requestAnimationFrame(() => {
+                if (!Array.isArray(entries)) return;
+                callback(entries, observer);
+            });
+        });
+    }
+};
+
+// 添加全局错误处理器
+window.addEventListener('error', (event) => {
+    if (event.message && event.message.includes('ResizeObserver')) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        return false;
+    }
+}, true);
+
 // 创建Vue应用
 const app = createApp(App);
 
