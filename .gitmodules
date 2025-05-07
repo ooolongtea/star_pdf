@@ -1,0 +1,3 @@
+[submodule "starpdf"]
+	path = starpdf
+	url = git@gitee.com:ooolongtea/starpdf.git

@@ -3,3 +3,5 @@ uploads/
 retro_extractor/tmp_dataset/
 tmp_dataset/
 tmp_dataset/**/*
+star_pdf/
+star_pdf/**/*
