@@ -17,11 +17,11 @@ export default {
     },
     speed: {
       type: Number,
-      default: 10, // 每个字符的打字速度（毫秒）
+      default: 15, // 每个字符的打字速度（毫秒），增加以减慢速度
     },
     startDelay: {
       type: Number,
-      default: 100, // 开始打字前的延迟（毫秒）
+      default: 200, // 开始打字前的延迟（毫秒），增加以更平滑
     },
     skipAnimation: {
       type: Boolean,
@@ -35,11 +35,11 @@ export default {
     let timer = null;
     let currentIndex = 0;
 
-    // 打字效果函数 - 优化版本，批量处理字符以提高性能
+    // 打字效果函数 - 优化版本，减少批量处理字符数量以更平滑
     const typeText = () => {
       if (currentIndex < props.text.length) {
-        // 计算本次要添加的字符数量（批量处理）
-        const charsToAdd = Math.min(5, props.text.length - currentIndex);
+        // 计算本次要添加的字符数量（减少批量处理数量以更平滑）
+        const charsToAdd = Math.min(3, props.text.length - currentIndex);
 
         // 更新显示的文本
         displayedText.value = props.text.substring(
@@ -54,8 +54,8 @@ export default {
         const isChineseOrPunctuation =
           /[\u4e00-\u9fa5]|[，。！？；：""''（）【】《》]/.test(nextChar);
         const nextDelay = isChineseOrPunctuation
-          ? props.speed * 2
-          : props.speed;
+          ? props.speed * 2.5 // 增加中文和标点的延迟
+          : props.speed * 1.2; // 增加英文的延迟
 
         timer = setTimeout(typeText, nextDelay);
       } else {

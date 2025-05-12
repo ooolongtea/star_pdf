@@ -1,52 +1,10 @@
 <template>
   <div class="h-full flex flex-col relative">
-    <!-- 聊天头部 -->
-    <div
-      class="flex items-center justify-between p-4 border-b bg-white sticky top-0 z-10 shadow-sm"
-    >
-      <div class="flex items-center">
-        <h2 class="text-lg font-medium text-gray-900">
-          {{ currentConversation ? currentConversation.title : "新对话" }}
-        </h2>
-        <span
-          v-if="currentConversation"
-          class="ml-2 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 flex items-center"
-        >
-          <span
-            class="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1"
-          ></span>
-          {{ getModelDisplayName(currentConversation.model_name) }}
-        </span>
-      </div>
+    <!-- 移除聊天头部，因为已经将模型选择器移到了主顶部栏 -->
 
-      <div class="flex items-center space-x-2">
-        <button
-          v-if="messages.length > 0"
-          @click="onNewChat"
-          class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
-        >
-          <svg
-            class="h-4 w-4 mr-1"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-            ></path>
-          </svg>
-          新对话
-        </button>
-      </div>
-    </div>
-
-    <!-- 聊天消息区域 - 更现代的设计 -->
+    <!-- 聊天消息区域 - ChatGPT风格 -->
     <div
-      class="flex-1 overflow-y-auto px-4 py-2 bg-white pb-44"
+      class="flex-1 overflow-y-auto px-0 md:px-4 py-0 bg-white pb-4"
       ref="messagesContainer"
     >
       <div
@@ -113,193 +71,147 @@
       </div>
     </div>
 
-    <!-- 输入区域（固定在底部） - 更现代的设计，降低高度 -->
-    <div
-      class="p-2 border-t bg-white shadow-lg fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out z-10 md:absolute backdrop-blur-sm"
-    >
-      <!-- 模型指示器 - 优雅的设计 -->
-      <div
-        class="absolute -top-8 left-4 text-xs font-medium flex items-center bg-gradient-to-r from-white to-gray-50 px-3 py-1.5 rounded-t-lg border border-indigo-100 border-b-0 shadow-md backdrop-blur-sm"
-      >
-        <span
-          class="inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 mr-2 animate-pulse shadow-sm"
-        ></span>
-        <span
-          :key="currentConversation ? currentConversation.model_name : 'none'"
-          class="text-indigo-900 tracking-wide"
-          >{{
-            currentConversation
-              ? getModelDisplayName(currentConversation.model_name)
-              : "未选择模型"
-          }}</span
-        >
-      </div>
-
-      <!-- 现代化的输入区域 -->
-      <form @submit.prevent="sendMessage" class="relative">
+    <!-- 简化的输入区域 - 固定在底部的圆角矩形 -->
+    <div class="fixed bottom-4 left-0 right-0 z-50">
+      <form @submit.prevent="sendMessage" class="relative max-w-3xl mx-auto">
+        <!-- 圆角矩形输入区域 -->
         <div
-          class="relative border border-indigo-100 rounded-2xl shadow-md bg-gradient-to-b from-white to-gray-50 overflow-hidden focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-200 transition-all duration-300 hover:shadow-lg"
+          class="relative rounded-xl border border-gray-200 shadow-md bg-white flex items-center"
+          style="width: 75%; margin: 0 auto; min-height: 65px"
         >
-          <!-- 文本输入区域 - 适当高度 -->
-          <div class="flex-1 min-h-[48px] p-2">
+          <!-- 左侧工具栏 -->
+          <div class="flex items-center space-x-2 ml-3">
+            <!-- 思考模式切换按钮 -->
+            <div v-if="isThinkingModelSupported" class="relative group">
+              <button
+                @click="toggleThinkingMode"
+                class="toolbar-button"
+                :class="{
+                  'bg-blue-100 text-blue-600 ring-2 ring-blue-200':
+                    enableThinking,
+                }"
+                :title="enableThinking ? '关闭思考模式' : '开启思考模式'"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- 图片上传组件 -->
+            <div class="relative group">
+              <ImageUploader
+                ref="imageUploader"
+                :disabled="!currentConversation || loading || !isVisualModel"
+                @image-selected="onImageSelected"
+                @image-removed="onImageRemoved"
+              />
+            </div>
+
+            <!-- 已选图片预览 -->
+            <div v-if="selectedImage" class="relative">
+              <div
+                class="w-6 h-6 rounded-lg overflow-hidden border border-gray-200 shadow-sm"
+              >
+                <img :src="selectedImage" class="w-full h-full object-cover" />
+                <button
+                  @click.prevent="onImageRemoved"
+                  class="absolute -top-1 -right-1 bg-white rounded-full p-0.5 shadow-md hover:bg-gray-100 transition-colors border border-gray-200"
+                >
+                  <svg
+                    class="w-2 h-2 text-gray-600"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                      clip-rule="evenodd"
+                    ></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 文本输入区域 -->
+          <div class="flex-1 min-h-[48px] relative mx-2">
             <textarea
               v-model="messageInput"
               @keydown.enter.exact.prevent="sendMessage"
-              placeholder="发送消息给AI助手..."
-              class="w-full border-0 focus:ring-0 resize-none transition-all duration-200 font-sans text-base p-0 max-h-[150px] overflow-y-auto overflow-x-hidden min-h-[40px] whitespace-normal break-words"
+              placeholder="发送消息..."
+              class="w-full border-0 px-2 py-3 focus:ring-0 focus:outline-none resize-none transition-all duration-200 font-sans text-base max-h-[150px] overflow-y-auto overflow-x-hidden min-h-[24px] whitespace-normal break-words"
               style="word-wrap: break-word; word-break: break-word"
-              rows="2"
+              rows="1"
               :disabled="!currentConversation || loading"
               ref="messageTextarea"
             ></textarea>
           </div>
 
-          <!-- 底部工具栏 - 优雅的设计 -->
-          <div
-            class="flex items-center justify-between px-3 py-1.5 border-t border-indigo-50 bg-gradient-to-r from-gray-50 to-indigo-50/30"
+          <!-- 发送按钮 -->
+          <button
+            type="submit"
+            class="mr-3 inline-flex items-center justify-center w-8 h-8 rounded-md text-white bg-gray-800 hover:bg-gray-700 focus:outline-none disabled:opacity-40 disabled:bg-gray-400 transition-colors duration-200"
+            :disabled="
+              (!messageInput.trim() && !selectedImage) ||
+              !currentConversation ||
+              loading
+            "
           >
-            <!-- 左侧工具 -->
-            <div class="flex items-center space-x-3">
-              <!-- 思考模式切换按钮 -->
-              <div v-if="isThinkingModelSupported" class="relative group">
-                <button
-                  @click="toggleThinkingMode"
-                  class="toolbar-button"
-                  :class="{
-                    'bg-blue-100 text-blue-600 ring-2 ring-blue-200':
-                      enableThinking,
-                  }"
-                  :title="enableThinking ? '关闭思考模式' : '开启思考模式'"
-                >
-                  <svg
-                    class="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                    ></path>
-                  </svg>
-                </button>
-                <!-- 思考模式提示 - 悬浮显示 -->
-                <div
-                  class="absolute bottom-full mb-2 left-0 text-xs font-medium text-gray-700 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-200 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 transform group-hover:translate-y-0 translate-y-1"
-                >
-                  {{ enableThinking ? "关闭思考模式" : "开启思考模式" }}
-                </div>
-              </div>
-
-              <!-- 图片上传组件 -->
-              <div class="relative group">
-                <ImageUploader
-                  ref="imageUploader"
-                  :disabled="!currentConversation || loading || !isVisualModel"
-                  @image-selected="onImageSelected"
-                  @image-removed="onImageRemoved"
-                />
-                <!-- 图片大小提示 - 悬浮显示 -->
-                <div
-                  v-if="isVisualModel"
-                  class="absolute bottom-full mb-2 left-0 text-xs font-medium text-gray-700 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-200 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 transform group-hover:translate-y-0 translate-y-1"
-                >
-                  图片限制: &lt;10MB
-                </div>
-              </div>
-
-              <!-- 已选图片预览 -->
-              <div v-if="selectedImage" class="relative">
-                <div
-                  class="w-8 h-8 rounded-lg overflow-hidden border border-gray-200 shadow-sm"
-                >
-                  <img
-                    :src="selectedImage"
-                    class="w-full h-full object-cover"
-                  />
-                  <button
-                    @click.prevent="onImageRemoved"
-                    class="absolute -top-1 -right-1 bg-white rounded-full p-0.5 shadow-md hover:bg-gray-100 transition-colors border border-gray-200"
-                  >
-                    <svg
-                      class="w-2.5 h-2.5 text-gray-600"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                        clip-rule="evenodd"
-                      ></path>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- 发送按钮 - 优雅的设计 -->
-            <button
-              type="submit"
-              class="inline-flex items-center justify-center w-8 h-8 rounded-full text-white bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all duration-300 shadow-md transform hover:scale-105"
-              :disabled="
-                (!messageInput.trim() && !selectedImage) ||
-                !currentConversation ||
-                loading
-              "
-              :class="{ 'scale-110': loading }"
+            <svg
+              v-if="!loading"
+              class="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <svg
-                v-if="!loading"
-                class="h-4 w-4"
-                fill="none"
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 12h14M12 5l7 7-7 7"
+              ></path>
+            </svg>
+            <svg
+              v-else
+              class="animate-spin h-4 w-4"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
                 stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                ></path>
-              </svg>
-              <svg
-                v-else
-                class="animate-spin h-4 w-4"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            </button>
-          </div>
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+          </button>
         </div>
 
-        <!-- 底部提示 - 优雅的设计 -->
-        <div
-          class="text-xs text-center text-indigo-400 mt-1.5 font-medium tracking-wide"
-        >
-          <span
-            class="bg-gradient-to-r from-indigo-500 to-blue-500 bg-clip-text text-transparent"
-            >AI可能会产生不准确的信息。请谨慎使用AI生成的内容。</span
-          >
+        <!-- 底部提示 - 固定在最下方 -->
+        <div class="text-xs text-center text-gray-500 mt-2 font-medium">
+          AI也可能会犯错。请核查重要信息。
         </div>
       </form>
     </div>
@@ -444,24 +356,25 @@ export default {
       }
     });
 
-    // 滚动到底部 - 增强版，确保最后一条消息完全可见
+    // 滚动到底部 - 简化版，确保最后一条消息完全可见
     const scrollToBottom = () => {
       nextTick(() => {
         if (messagesContainer.value) {
           // 使用setTimeout确保DOM完全更新后再滚动
           setTimeout(() => {
+            // 直接滚动到底部
             messagesContainer.value.scrollTop =
-              messagesContainer.value.scrollHeight + 2000;
+              messagesContainer.value.scrollHeight;
 
             // 再次滚动以确保完全到底部（处理可能的图片加载延迟）
             setTimeout(() => {
               messagesContainer.value.scrollTop =
-                messagesContainer.value.scrollHeight + 2000;
+                messagesContainer.value.scrollHeight;
 
               // 第三次滚动，确保在所有内容加载后仍然滚动到底部
               setTimeout(() => {
                 messagesContainer.value.scrollTop =
-                  messagesContainer.value.scrollHeight + 2000;
+                  messagesContainer.value.scrollHeight;
               }, 300);
             }, 100);
           }, 10);
@@ -616,9 +529,9 @@ export default {
 </script>
 
 <style scoped>
-/* 自定义滚动条 - 优雅的设计 */
+/* 自定义滚动条 - ChatGPT风格 */
 .overflow-y-auto::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-track {
@@ -626,17 +539,15 @@ export default {
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #e2e8f0, #cbd5e1);
+  background-color: rgba(0, 0, 0, 0.1);
   border-radius: 9999px;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #cbd5e1, #94a3b8);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  background-color: rgba(0, 0, 0, 0.2);
 }
 
-/* 文本区域样式 - 优雅的输入框设计 */
+/* 文本区域样式 - 优化版 */
 textarea {
   min-height: 24px;
   max-height: 200px;
@@ -646,9 +557,24 @@ textarea {
   box-shadow: none !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
-  letter-spacing: 0.01em;
-  color: #1e293b;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  color: #333;
+  transition: all 0.2s ease;
+  overflow-x: hidden !important; /* 防止水平滚动条 */
+  scrollbar-width: thin; /* Firefox */
+}
+
+/* Webkit浏览器的滚动条样式 */
+textarea::-webkit-scrollbar {
+  width: 4px;
+}
+
+textarea::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
 }
 
 textarea:focus {
@@ -657,39 +583,32 @@ textarea:focus {
 }
 
 textarea::placeholder {
-  color: #94a3b8;
-  opacity: 0.9;
-  font-weight: 400;
-  letter-spacing: 0.01em;
+  color: #8e8ea0;
+  opacity: 1;
+}
+
+/* 固定底部输入区域样式 - 简化版 */
+.fixed.bottom-4 {
+  transform: translateY(0); /* 防止输入区域往下滑 */
+}
+
+/* 输入区域圆角矩形样式 */
+form > div.rounded-xl {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
 }
 
-textarea:focus::placeholder {
-  opacity: 0.6;
-  transform: translateX(3px);
+form > div.rounded-xl:focus-within {
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  border-color: #d1d5db;
 }
 
-/* 固定底部输入区域样式 - 优雅的设计 */
-.fixed.bottom-0,
-.absolute.bottom-0 {
-  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(226, 232, 240, 0.8);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(249, 250, 251, 0.95) 100%
-  );
-}
-
-/* 消息气泡样式 - 更现代的圆角和阴影 */
+/* 消息气泡样式 - ChatGPT风格 */
 .message-bubble {
-  border-radius: 1.25rem;
+  border-radius: 0.75rem;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
-
-/* 移除了悬浮效果 */
 
 /* 用户消息气泡 */
 .user-message {
@@ -701,122 +620,75 @@ textarea:focus::placeholder {
 /* AI消息气泡 */
 .ai-message {
   background-color: #f7f7f8;
-  border: 1px solid #e5e7eb;
+  border: none;
 }
 
-/* 输入框容器样式 - 优雅的设计 */
-.input-container {
-  border-radius: 1.5rem;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(249, 250, 251, 0.8) 100%
-  );
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-}
-
-.input-container:focus-within {
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15), 0 4px 12px rgba(0, 0, 0, 0.05);
-  transform: translateY(-1px);
-}
-
-/* 发送按钮动画 - 优雅的设计 */
-@keyframes sendPulse {
-  0% {
-    transform: scale(1) rotate(0deg);
-    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
-  }
-  50% {
-    transform: scale(1.15) rotate(5deg);
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-  }
-  100% {
-    transform: scale(1) rotate(0deg);
-    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.2);
-  }
-}
-
-.animate-send-pulse {
-  animation: sendPulse 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-/* 工具栏按钮样式 - 优雅的设计 */
+/* 工具栏按钮样式 - ChatGPT风格 */
 .toolbar-button {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
-  border-radius: 0.5rem;
-  color: #6366f1;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.95) 100%
-  );
-  backdrop-filter: blur(4px);
+  border-radius: 0.25rem;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  background-color: transparent;
+  border: none;
 }
 
 .toolbar-button:hover {
-  color: #4f46e5;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(241, 245, 249, 1) 100%
-  );
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.15);
-  border-color: rgba(99, 102, 241, 0.3);
+  color: #4b5563;
+  background-color: #f3f4f6;
 }
 
-.toolbar-button:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+/* 发送按钮动画 */
+.animate-send-pulse {
+  animation: sendPulse 0.3s ease;
 }
 
-/* 添加消息加载动画 - 优雅的设计 */
+@keyframes sendPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 消息加载动画 */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(16px) scale(0.98);
-    filter: blur(2px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
+    transform: translateY(0);
   }
 }
 
 .message-fade-in {
-  animation: fadeIn 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
-  will-change: transform, opacity, filter;
+  animation: fadeIn 0.3s ease forwards;
 }
 
-/* 添加打字机效果 - 优雅的设计 */
-@keyframes typing {
-  from {
-    width: 0;
-    border-right: 2px solid #6366f1;
-  }
-  to {
-    width: 100%;
-    border-right: 2px solid transparent;
-  }
+/* 移除不必要的边框 */
+.border-t,
+.border-b,
+.border-r,
+.border-l {
+  border: none !important;
 }
 
-.typing-animation {
-  display: inline-block;
-  overflow: hidden;
-  white-space: nowrap;
-  animation: typing 1.2s steps(40, end) infinite;
-  position: relative;
-  letter-spacing: 0.01em;
+/* 模型选择器样式 */
+.py-3 .rounded-lg {
+  transition: all 0.2s ease;
+}
+
+.py-3 .rounded-lg:hover {
+  background-color: #f3f4f6;
 }
 </style>

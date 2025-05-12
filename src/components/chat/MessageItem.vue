@@ -1,36 +1,36 @@
 <template>
   <div
     :class="[
-      'mb-1 flex relative group',
-      message.role === 'user' ? 'justify-end ' : 'justify-start',
+      'py-4 px-4 md:px-8 relative group border-b border-gray-100',
+      message.role === 'user' ? 'bg-white' : 'bg-gray-50',
       message.isError ? 'opacity-70' : '',
       shouldAnimate ? 'animate-message-appear' : '',
     ]"
   >
-    <!-- 用户头像（右侧） - 独立于气泡，优雅设计 -->
     <div
-      v-if="message.role === 'user'"
-      class="absolute right-0 top-1 flex-shrink-0 z-0"
+      class="w-full max-w-3xl mx-auto flex"
+      :class="{ 'flex-row-reverse': message.role === 'user' }"
     >
+      <!-- 头像 -->
       <div
-        class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md border-2 border-white"
+        class="flex-shrink-0"
+        :class="{
+          'ml-4': message.role === 'user',
+          'mr-4': message.role !== 'user',
+        }"
       >
-        <span class="text-sm font-medium tracking-wide">{{ userInitial }}</span>
-      </div>
-    </div>
-
-    <div
-      class="flex items-start"
-      :style="
-        message.role === 'user'
-          ? 'max-width: 80%; margin-right: 2.5rem;'
-          : 'max-width: 85%;'
-      "
-    >
-      <!-- AI头像 - 优雅设计 -->
-      <div v-if="message.role === 'assistant'" class="flex-shrink-0 mr-3 mt-1">
+        <!-- 用户头像 -->
         <div
-          class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center text-blue-600 overflow-hidden shadow-sm border-2 border-white"
+          v-if="message.role === 'user'"
+          class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
+        >
+          <span class="text-sm font-medium">{{ userInitial }}</span>
+        </div>
+
+        <!-- AI头像 -->
+        <div
+          v-else
+          class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700 overflow-hidden"
         >
           <!-- 根据当前模型显示不同的头像 -->
           <img
@@ -58,25 +58,25 @@
           </svg>
         </div>
       </div>
-      <div
-        :class="[
-          'px-3 py-2 relative transform transition-all duration-200 flex items-center justify-center message-bubble',
-          message.role === 'user' ? 'user-message mr-10' : 'ai-message',
-          message.isLoading ? 'animate-pulse' : '',
-        ]"
-      >
-        <!-- 复制按钮（悬停时显示） - 更现代的设计 -->
+
+      <!-- 消息内容 -->
+      <div class="flex-1 min-w-0 relative">
+        <!-- 复制按钮 -->
         <div
-          v-if="!message.isLoading && !message.isError"
-          class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out z-10"
+          v-if="
+            !message.isLoading &&
+            !message.isError &&
+            message.role === 'assistant'
+          "
+          class="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
         >
           <button
             @click="copyMessage"
-            class="p-1.5 rounded-md bg-white/80 backdrop-blur-sm shadow-sm hover:bg-gray-100 focus:outline-none transform transition-all duration-200 hover:scale-105 active:scale-95 text-gray-500 hover:text-gray-700 border border-gray-200"
+            class="p-1 text-gray-400 hover:text-gray-600 focus:outline-none"
             title="复制消息"
           >
             <svg
-              class="h-3.5 w-3.5"
+              class="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -92,24 +92,27 @@
           </button>
         </div>
 
-        <!-- 消息内容 - 更现代的加载动画 -->
-        <div
-          v-if="message.isLoading"
-          class="flex items-center justify-center space-x-1.5 w-full py-1"
-        >
-          <div class="typing-dots">
-            <span></span>
-            <span></span>
-            <span></span>
+        <!-- 消息内容 - ChatGPT风格 -->
+        <div v-if="message.isLoading" class="flex items-center py-2">
+          <div class="flex space-x-1">
+            <div
+              class="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+              style="animation-delay: 0s"
+            ></div>
+            <div
+              class="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+              style="animation-delay: 0.1s"
+            ></div>
+            <div
+              class="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+              style="animation-delay: 0.2s"
+            ></div>
           </div>
         </div>
-        <div v-else class="w-full flex items-center justify-center">
-          <div
-            v-if="message.isError"
-            class="text-red-500 flex items-center justify-center w-full"
-          >
+        <div v-else>
+          <div v-if="message.isError" class="text-red-500 flex items-center">
             <svg
-              class="inline-block h-5 w-5 mr-1.5 flex-shrink-0 mt-0.5"
+              class="inline-block h-4 w-4 mr-2 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -126,7 +129,7 @@
           </div>
           <div
             v-else
-            class="whitespace-pre-wrap leading-snug markdown-content flex-1 self-center"
+            class="whitespace-pre-wrap leading-relaxed markdown-content"
           >
             <!-- 用户消息中的图片 -->
             <div v-if="message.role === 'user' && message.image" class="mb-2">
@@ -153,16 +156,16 @@
               :skipAnimation="!shouldAnimate"
               @typed="isTyped = true"
             />
+            <!-- 用户消息 -->
             <div
-              v-else
-              class="message-markdown"
-              :class="{ 'user-message-content': message.role === 'user' }"
-              style="display: inline-block"
+              v-else-if="message.role === 'user'"
+              class="user-message-content"
             >
-              <div
-                v-html="renderMarkdown(actualContent)"
-                :class="{ 'user-message-html': message.role === 'user' }"
-              ></div>
+              <div v-html="renderMarkdown(actualContent)"></div>
+            </div>
+            <!-- AI消息 -->
+            <div v-else class="message-markdown" style="display: inline-block">
+              <div v-html="renderMarkdown(actualContent)"></div>
             </div>
 
             <!-- AI回复中的图片 -->
@@ -821,105 +824,83 @@ export default {
   background-color: rgba(241, 245, 249, 0.9);
 }
 
-/* 调整Markdown内容样式 - 更现代化的排版 */
+/* Markdown内容样式 - ChatGPT风格 */
 .message-markdown {
   max-width: 100%;
-  font-size: 0.95rem;
-  line-height: 1.4;
+  font-size: 1rem;
+  line-height: 1.5;
   color: inherit;
 }
 
-/* 调整段落间距 - 更紧凑 */
+/* 段落间距 */
 .message-markdown :deep(p) {
-  margin: 0.1rem 0;
-  padding: 0;
+  margin: 0.5rem 0;
 }
 
-/* 用户消息内容特殊处理，修复底部空白问题 */
+/* 用户消息内容 */
 .user-message-content {
-  line-height: 1.3;
+  display: inline-block;
+  max-width: 90%;
+  margin-left: auto; /* 将用户消息移到右侧 */
+  text-align: right; /* 文本右对齐 */
 }
 
+/* 用户消息内的段落间距 */
 .user-message-content :deep(p) {
-  margin: 0;
-  padding: 0;
-  line-height: 1.3;
+  margin: 0.25rem 0;
+}
+
+.user-message-content :deep(p:first-child) {
+  margin-top: 0;
 }
 
 .user-message-content :deep(p:last-child) {
   margin-bottom: 0;
 }
 
-/* 用户消息HTML内容特殊处理 */
-.user-message-html {
-  line-height: 1.3;
-  display: inline;
-}
-
-/* 减少换行的间距 */
-.message-markdown :deep(br) {
-  content: "";
-  display: block;
-  margin: 0.05rem 0;
-}
-
-.user-message-content :deep(br) {
-  margin: 0;
-  line-height: 1.3;
-}
-
-/* 调整标题样式 - 更现代的排版 */
+/* 标题样式 */
 .message-markdown :deep(h1),
 .message-markdown :deep(h2),
 .message-markdown :deep(h3),
 .message-markdown :deep(h4),
 .message-markdown :deep(h5),
 .message-markdown :deep(h6) {
-  margin: 0.5rem 0 0.25rem 0;
+  margin: 1rem 0 0.5rem 0;
   font-weight: 600;
   line-height: 1.3;
-  letter-spacing: -0.01em;
   color: inherit;
 }
 
 .message-markdown :deep(h1) {
-  font-size: 1.25rem;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  font-size: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
   padding-bottom: 0.25rem;
-  margin-top: 0.75rem;
 }
 
 .message-markdown :deep(h2) {
-  font-size: 1.125rem;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  font-size: 1.25rem;
+  border-bottom: 1px solid #e5e7eb;
   padding-bottom: 0.25rem;
-  margin-top: 0.75rem;
 }
 
 .message-markdown :deep(h3) {
-  font-size: 1.05rem;
-  margin-top: 0.5rem;
+  font-size: 1.125rem;
 }
 
 .message-markdown :deep(h4),
 .message-markdown :deep(h5),
 .message-markdown :deep(h6) {
   font-size: 1rem;
-  margin-top: 0.5rem;
 }
 
-/* 代码块语法高亮 - 优雅的设计 */
+/* 代码块样式 */
 .message-markdown :deep(pre) {
   position: relative;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.message-markdown :deep(pre):hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
-  border-color: rgba(203, 213, 225, 0.9);
-  transform: translateY(-1px);
+  background-color: #f7f7f8;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
 }
 
 /* 代码块语言标签 */
@@ -928,16 +909,14 @@ export default {
   position: absolute;
   top: 0;
   right: 0;
-  padding: 0.25rem 0.75rem;
+  padding: 0.25rem 0.5rem;
   font-size: 0.7rem;
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-  color: white;
-  border-bottom-left-radius: 0.5rem;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: #f0f0f0;
+  color: #666;
+  border-bottom-left-radius: 0.25rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
   font-weight: 500;
-  letter-spacing: 0.05em;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   text-transform: uppercase;
 }
 </style>
@@ -961,204 +940,100 @@ export default {
   transition-duration: 200ms;
 }
 
-/* 消息出现动画 - 优雅的设计 */
+/* 消息出现动画 - ChatGPT风格，更平滑的动画效果 */
 @keyframes messageAppear {
   from {
     opacity: 0;
-    transform: translateY(16px) scale(0.98);
-    filter: blur(2px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
+    transform: translateY(0);
   }
 }
 
 .animate-message-appear {
-  animation: messageAppear 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
-  animation-iteration-count: 1; /* 确保动画只播放一次 */
-  animation-fill-mode: forwards; /* 保持动画结束时的状态 */
-  will-change: transform, opacity, filter;
+  animation: messageAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* 代码块复制按钮样式 - 优雅的设计 */
+/* 代码块复制按钮样式 - ChatGPT风格 */
 .code-copy-button {
   position: absolute;
   top: 0.5rem;
-  right: 3rem; /* 避免与语言标签重叠 */
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.95) 100%
-  );
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 0.5rem;
+  right: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 0.25rem;
   padding: 0.25rem;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.5rem;
+  height: 1.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: opacity 0.2s ease;
   font-size: 0.75rem;
   z-index: 10;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(8px);
-  color: #4f46e5;
+  color: #666;
 }
 
 pre:hover .code-copy-button {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .code-copy-button:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(241, 245, 249, 1) 100%
-  );
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  color: #4338ca;
+  background-color: rgba(255, 255, 255, 1);
+  color: #333;
 }
 
-.code-copy-button:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-/* 复制成功提示样式 - 优雅的设计 */
+/* 复制成功提示样式 - ChatGPT风格 */
 .copy-success-tooltip {
   position: absolute;
-  top: -2.25rem;
+  top: -2rem;
   right: 0;
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+  background-color: #333;
   color: white;
-  padding: 0.375rem 1rem;
-  border-radius: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
   font-size: 0.75rem;
-  font-weight: 500;
   white-space: nowrap;
-  animation: fadeInOut 2.5s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
-  backdrop-filter: blur(8px);
-  letter-spacing: 0.05em;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  animation: fadeInOut 2s ease;
 }
 
 @keyframes fadeInOut {
   0% {
     opacity: 0;
-    transform: translateY(8px);
   }
-  15% {
+  20% {
     opacity: 1;
-    transform: translateY(0);
   }
-  85% {
+  80% {
     opacity: 1;
-    transform: translateY(0);
   }
   100% {
     opacity: 0;
-    transform: translateY(-8px);
   }
 }
 
-/* 全局复制通知样式 - 优雅的设计 */
+/* 全局复制通知样式 - ChatGPT风格 */
 .copy-notification {
   position: fixed;
-  top: 24px;
+  top: 20px;
   left: 50%;
-  transform: translateX(-50%) translateY(-24px);
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+  transform: translateX(-50%) translateY(-20px);
+  background-color: #333;
   color: white;
-  padding: 12px 24px;
-  border-radius: 12px;
+  padding: 8px 16px;
+  border-radius: 4px;
   font-size: 14px;
-  font-weight: 500;
   z-index: 9999;
   opacity: 0;
-  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  letter-spacing: 0.025em;
+  transition: all 0.3s ease;
 }
 
 .copy-notification.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
-  }
-  50% {
-    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
-  }
-  100% {
-    box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);
-  }
-}
-
-/* 打字动画点 - 优雅的设计 */
-.typing-dots {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0.75rem 0;
-}
-
-.typing-dots span {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
-  animation: typingAnimation 1.6s infinite cubic-bezier(0.25, 0.8, 0.25, 1) both;
-  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
-}
-
-.ai-message .typing-dots span {
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
-}
-
-.user-message .typing-dots span {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.7) 100%
-  );
-  box-shadow: 0 2px 4px rgba(255, 255, 255, 0.2);
-}
-
-.typing-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.typing-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes typingAnimation {
-  0%,
-  80%,
-  100% {
-    transform: scale(0.6) translateY(0);
-    opacity: 0.6;
-  }
-  40% {
-    transform: scale(1.2) translateY(-2px);
-    opacity: 1;
-    box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
-  }
 }
 </style>

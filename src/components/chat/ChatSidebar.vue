@@ -1,36 +1,11 @@
 <template>
   <div
-    class="h-full flex flex-col bg-white text-gray-800"
+    class="h-full flex flex-col bg-[#F9F9F9] text-gray-700"
     :class="{ collapsed: collapsed }"
   >
-    <!-- 新建对话按钮 -->
-    <div class="p-4 border-b border-gray-200">
-      <button
-        @click="onNewChat"
-        class="w-full flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm"
-      >
-        <svg
-          class="h-5 w-5"
-          :class="{ 'mr-2': !collapsed }"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-          ></path>
-        </svg>
-        <span v-if="!collapsed">新建对话</span>
-      </button>
-    </div>
-
     <!-- 对话列表 -->
     <div class="flex-1 overflow-y-auto">
-      <div v-if="loading" class="p-4 text-center text-gray-400">
+      <div v-if="loading" class="p-4 text-center text-gray-600">
         <svg
           class="animate-spin h-5 w-5 mx-auto mb-2"
           xmlns="http://www.w3.org/2000/svg"
@@ -56,27 +31,33 @@
 
       <div
         v-else-if="conversations.length === 0"
-        class="p-4 text-center text-gray-400"
+        class="p-4 text-center text-gray-600"
       >
         暂无对话记录
       </div>
 
-      <div v-else class="space-y-1 px-2">
+      <div v-else class="space-y-0.5 px-2 py-2">
         <div
           v-for="conversation in conversations"
           :key="conversation.id"
           @click="onSelectConversation(conversation)"
-          class="p-2 rounded-md cursor-pointer flex items-center justify-between group"
+          class="px-3 py-2 rounded cursor-pointer flex items-center justify-between group transition-colors duration-200"
           :class="
             currentConversation && currentConversation.id === conversation.id
-              ? 'bg-gray-100 text-gray-900'
-              : 'hover:bg-gray-50 text-gray-700'
+              ? 'bg-blue-100 text-gray-800'
+              : 'hover:bg-gray-200 text-gray-700'
           "
         >
           <div class="flex items-center overflow-hidden">
             <svg
-              class="h-5 w-5 flex-shrink-0 text-gray-500"
-              :class="{ 'mr-2': !collapsed }"
+              class="h-4 w-4 flex-shrink-0"
+              :class="{
+                'mr-2': !collapsed,
+                'text-gray-500': !(
+                  currentConversation &&
+                  currentConversation.id === conversation.id
+                ),
+              }"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -89,7 +70,7 @@
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               ></path>
             </svg>
-            <span class="truncate" v-if="!collapsed">{{
+            <span class="truncate text-sm" v-if="!collapsed">{{
               conversation.title
             }}</span>
           </div>
@@ -99,11 +80,11 @@
           >
             <button
               @click.stop="onEditTitle(conversation)"
-              class="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-100"
+              class="text-gray-500 hover:text-gray-700 p-1 rounded transition-colors duration-200"
               title="重命名"
             >
               <svg
-                class="h-4 w-4"
+                class="h-3.5 w-3.5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -120,11 +101,11 @@
 
             <button
               @click.stop="onDeleteConversation(conversation)"
-              class="text-gray-400 hover:text-red-500 p-1 rounded-md hover:bg-gray-100"
+              class="text-gray-500 hover:text-red-500 p-1 rounded transition-colors duration-200"
               title="删除"
             >
               <svg
-                class="h-4 w-4"
+                class="h-3.5 w-3.5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -143,67 +124,51 @@
       </div>
     </div>
 
-    <!-- 编辑标题模态框 -->
+    <!-- 编辑标题模态框 - ChatGPT风格 -->
     <div
       v-if="showEditModal"
-      class="fixed z-10 inset-0 overflow-y-auto"
+      class="fixed z-50 inset-0 overflow-y-auto"
       aria-labelledby="modal-title"
       role="dialog"
       aria-modal="true"
     >
-      <div
-        class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
-      >
+      <div class="flex items-center justify-center min-h-screen p-4">
         <div
-          class="fixed inset-0 bg-gray-600 bg-opacity-50 backdrop-blur-sm transition-opacity"
+          class="fixed inset-0 bg-gray-900 bg-opacity-75 backdrop-blur-sm transition-opacity"
           aria-hidden="true"
           @click="showEditModal = false"
         ></div>
 
-        <span
-          class="hidden sm:inline-block sm:align-middle sm:h-screen"
-          aria-hidden="true"
-          >&#8203;</span
-        >
-
         <div
-          class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+          class="relative bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full"
         >
-          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <div class="sm:flex sm:items-start">
-              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                <h3
-                  class="text-lg leading-6 font-medium text-gray-900"
-                  id="modal-title"
-                >
-                  重命名对话
-                </h3>
-                <div class="mt-2">
-                  <input
-                    type="text"
-                    v-model="editTitleForm.title"
-                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                    placeholder="输入对话标题"
-                  />
-                </div>
-              </div>
+          <div class="p-5">
+            <h3 class="text-lg font-medium text-gray-900 mb-4" id="modal-title">
+              重命名对话
+            </h3>
+            <input
+              type="text"
+              v-model="editTitleForm.title"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-gray-900"
+              placeholder="输入对话标题"
+            />
+
+            <div class="mt-5 flex justify-end space-x-3">
+              <button
+                type="button"
+                @click="showEditModal = false"
+                class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none transition-colors duration-200"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                @click="saveTitle"
+                class="px-3 py-2 rounded-md text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 focus:outline-none transition-colors duration-200"
+              >
+                保存
+              </button>
             </div>
-          </div>
-          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-            <button
-              type="button"
-              @click="saveTitle"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
-            >
-              保存
-            </button>
-            <button
-              type="button"
-              @click="showEditModal = false"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-            >
-              取消
-            </button>
           </div>
         </div>
       </div>
@@ -224,7 +189,7 @@ export default {
       default: false,
     },
   },
-  emits: ["new-chat"],
+  emits: ["new-chat", "toggle-sidebar"],
   setup(props, { emit }) {
     const store = useStore();
 
@@ -256,6 +221,9 @@ export default {
     // 选择对话
     const onSelectConversation = async (conversation) => {
       await store.dispatch("chat/fetchConversation", conversation.id);
+
+      // 选择对话后收起侧边栏，保持与首页一致的动画效果
+      emit("toggle-sidebar");
     };
 
     // 编辑对话标题
@@ -303,22 +271,24 @@ export default {
 </script>
 
 <style scoped>
-/* 自定义滚动条 */
+/* 自定义滚动条 - ChatGPT风格 */
 .overflow-y-auto::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  background-color: transparent;
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
+  background-color: rgba(0, 0, 0, 0.2);
 }
+
 /* 收起状态样式 */
 .collapsed .overflow-y-auto::-webkit-scrollbar {
   width: 0;
@@ -340,7 +310,16 @@ export default {
   padding-right: 0.5rem;
 }
 
-.collapsed .space-y-1 {
-  margin-top: 0.5rem;
+/* 平滑过渡效果 - 与Chat.vue中保持一致 */
+.h-full {
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* 对话项悬停效果 */
+.px-3.py-2.rounded {
+  transition: background-color 0.2s ease;
 }
 </style>
