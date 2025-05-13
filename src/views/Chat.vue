@@ -1,5 +1,5 @@
 <template>
-  <div class="h-[calc(100vh)] flex flex-col bg-white mt-[50px]">
+  <div class="h-[calc(100vh)] flex flex-col mt-[50px]">
     <div class="flex-1 flex overflow-hidden">
       <!-- 侧边栏 - 默认收起 -->
       <transition name="sidebar">
@@ -61,14 +61,12 @@
 
       <!-- 主聊天界面 -->
       <div
-        class="flex-1 flex flex-col overflow-hidden bg-white transition-transform duration-500 ease-out"
+        class="flex-1 flex flex-col overflow-hidden transition-transform duration-500 ease-out"
         :class="{ 'translate-x-64': !sidebarCollapsed }"
         style="will-change: transform"
       >
         <!-- 顶部控制栏 - 固定在顶部的主栏 -->
-        <div
-          class="flex items-center h-14 min-h-[56px] px-4 border-b border-gray-100"
-        >
+        <div class="flex items-center h-14 min-h-[56px] px-4 border-b">
           <!-- 侧边栏展开/收起触发器 - 仅在侧边栏收起时显示 -->
           <button
             v-show="sidebarCollapsed"
@@ -119,7 +117,7 @@
           <div class="flex-1 flex justify-center">
             <div
               v-if="currentConversation"
-              class="flex items-center px-3 py-1.5 rounded-lg bg-gray-50 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200 cursor-pointer"
+              class="flex items-center px-3 py-1.5 rounded-lg bg-gray-100 text-sm text-gray-700 hover:bg-gray-200 transition-colors duration-200 cursor-pointer"
             >
               <span
                 class="inline-block w-2 h-2 rounded-full bg-green-500 mr-2"
@@ -436,7 +434,6 @@ export default {
 /* 保留顶部栏的底部边框，但使其更加柔和 */
 .border-b {
   border-bottom-width: 1px;
-  border-bottom-color: rgba(229, 231, 235, 0.5) !important;
 }
 
 /* 确保顶部栏高度一致 */

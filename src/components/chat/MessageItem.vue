@@ -2,9 +2,10 @@
   <div
     :class="[
       'py-4 px-4 md:px-8 relative group border-b border-gray-100',
-      message.role === 'user' ? 'bg-white' : 'bg-gray-50',
+      'bg-gray-50' /* 用户和AI消息使用相同的背景色 */,
       message.isError ? 'opacity-70' : '',
       shouldAnimate ? 'animate-message-appear' : '',
+      'hover:bg-gray-50/80 transition-colors duration-300' /* 悬停效果 */,
     ]"
   >
     <div
@@ -19,18 +20,18 @@
           'mr-4': message.role !== 'user',
         }"
       >
-        <!-- 用户头像 -->
+        <!-- 用户头像 - 现代渐变风格 -->
         <div
           v-if="message.role === 'user'"
-          class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white"
+          class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-sm"
         >
           <span class="text-sm font-medium">{{ userInitial }}</span>
         </div>
 
-        <!-- AI头像 -->
+        <!-- AI头像 - 精致设计 -->
         <div
           v-else
-          class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700 overflow-hidden"
+          class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-700 overflow-hidden shadow-sm border border-gray-100"
         >
           <!-- 根据当前模型显示不同的头像 -->
           <img
@@ -159,9 +160,12 @@
             <!-- 用户消息 -->
             <div
               v-else-if="message.role === 'user'"
-              class="user-message-content"
+              class="user-message-content flex justify-end w-full"
             >
-              <div v-html="renderMarkdown(actualContent)"></div>
+              <div
+                v-html="renderMarkdown(actualContent)"
+                class="text-right"
+              ></div>
             </div>
             <!-- AI消息 -->
             <div v-else class="message-markdown" style="display: inline-block">
@@ -204,6 +208,8 @@ import TypewriterText from "./TypewriterText.vue";
 import ThoughtChain from "./ThoughtChain.vue";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 // 全局集合来跟踪已经显示过的消息
 const displayedMessages = new Set();
@@ -456,10 +462,54 @@ export default {
     const renderMarkdown = (content) => {
       if (!content) return "";
 
+      // 处理LaTeX公式
+      // 先保存所有的LaTeX公式，避免被marked处理
+      const inlineMathMap = new Map();
+      const blockMathMap = new Map();
+      let inlineMathCount = 0;
+      let blockMathCount = 0;
+
+      // 替换行内公式 $...$ (不在代码块内的)
+      /* eslint-disable no-useless-escape */
+      // 使用更精确的正则表达式，避免匹配代码块中的 $ 符号
+      let processedContent = content.replace(
+        /(?<!\`)\$([^\$\n]+?)\$(?!\`)/g,
+        (match, latex) => {
+          // 确保这不是代码块的一部分
+          if (match.includes("```") || match.includes("`")) {
+            return match; // 保持原样
+          }
+          const placeholder = `__INLINE_MATH_${inlineMathCount}__`;
+          inlineMathMap.set(placeholder, latex);
+          inlineMathCount++;
+          console.log(`保存行内公式: ${latex} -> ${placeholder}`);
+          return placeholder;
+        }
+      );
+      /* eslint-enable no-useless-escape */
+
+      // 替换块级公式 $$...$$
+      /* eslint-disable no-useless-escape */
+      processedContent = processedContent.replace(
+        /\$\$([\s\S]+?)\$\$/g,
+        (match, latex) => {
+          // 确保这不是代码块的一部分
+          if (match.includes("```")) {
+            return match; // 保持原样
+          }
+          const placeholder = `__BLOCK_MATH_${blockMathCount}__`;
+          blockMathMap.set(placeholder, latex);
+          blockMathCount++;
+          console.log(`保存块级公式: ${latex} -> ${placeholder}`);
+          return placeholder;
+        }
+      );
+      /* eslint-enable no-useless-escape */
+
       // 配置marked选项
       marked.setOptions({
         // eslint-disable-next-line no-unused-vars
-        highlight: function (code, lang) {
+        highlight: function (code, _lang) {
           // 这里可以集成语法高亮库，如Prism或Highlight.js
           // 这里我们只是简单地返回代码，并在后续处理中添加语言标记
           return code;
@@ -470,10 +520,138 @@ export default {
       });
 
       // 使用marked解析Markdown
-      const rawHtml = marked(content);
+      let rawHtml = marked(processedContent);
+
+      // 恢复行内公式
+      inlineMathMap.forEach((latex, placeholder) => {
+        try {
+          const renderedLatex = katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: false,
+          });
+          // 使用全局替换，确保所有占位符都被替换
+          const regex = new RegExp(placeholder, "g");
+          rawHtml = rawHtml.replace(regex, renderedLatex);
+          console.log(`替换行内公式: ${placeholder} -> ${latex}`);
+        } catch (error) {
+          console.error("LaTeX渲染错误:", error, latex);
+          const regex = new RegExp(placeholder, "g");
+          rawHtml = rawHtml.replace(
+            regex,
+            `<code class="latex-error">$${latex}$</code>`
+          );
+        }
+      });
+
+      // 恢复块级公式
+      blockMathMap.forEach((latex, placeholder) => {
+        try {
+          const renderedLatex = katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: true,
+          });
+          // 使用全局替换，确保所有占位符都被替换
+          const regex = new RegExp(placeholder, "g");
+          rawHtml = rawHtml.replace(
+            regex,
+            `<div class="katex-block">${renderedLatex}</div>`
+          );
+          console.log(`替换块级公式: ${placeholder} -> ${latex}`);
+        } catch (error) {
+          console.error("LaTeX渲染错误:", error, latex);
+          const regex = new RegExp(placeholder, "g");
+          rawHtml = rawHtml.replace(
+            regex,
+            `<pre class="latex-error">$$${latex}$$</pre>`
+          );
+        }
+      });
 
       // 使用DOMPurify清理HTML，防止XSS攻击
-      const cleanHtml = DOMPurify.sanitize(rawHtml);
+      // 配置DOMPurify允许KaTeX的特殊标签和属性
+      const purifyConfig = {
+        ADD_TAGS: [
+          "annotation",
+          "semantics",
+          "mrow",
+          "mstyle",
+          "msub",
+          "mi",
+          "mn",
+          "mo",
+          "msup",
+          "mfrac",
+          "mspace",
+          "mtable",
+          "mtr",
+          "mtd",
+          "munderover",
+          "mpadded",
+          "mmultiscripts",
+          "math",
+          "mtext",
+          "mphantom",
+          "mglyph",
+          "menclose",
+          "mroot",
+          "msqrt",
+        ],
+        ADD_ATTR: [
+          "accent",
+          "accentunder",
+          "bevelled",
+          "close",
+          "columnalign",
+          "columnlines",
+          "columnspacing",
+          "denomalign",
+          "depth",
+          "dir",
+          "display",
+          "displaystyle",
+          "encoding",
+          "fence",
+          "frame",
+          "height",
+          "href",
+          "id",
+          "largeop",
+          "length",
+          "linethickness",
+          "lspace",
+          "lquote",
+          "mathbackground",
+          "mathcolor",
+          "mathsize",
+          "mathvariant",
+          "maxsize",
+          "minsize",
+          "movablelimits",
+          "notation",
+          "numalign",
+          "open",
+          "rowalign",
+          "rowlines",
+          "rowspacing",
+          "rspace",
+          "rquote",
+          "scriptlevel",
+          "scriptminsize",
+          "scriptsizemultiplier",
+          "selection",
+          "separator",
+          "separators",
+          "stretchy",
+          "subscriptshift",
+          "supscriptshift",
+          "symmetric",
+          "voffset",
+          "width",
+          "xmlns",
+        ],
+      };
+
+      const cleanHtml = DOMPurify.sanitize(rawHtml, purifyConfig);
 
       // 在下一个tick中添加复制按钮到代码块和语言标签
       setTimeout(() => {
@@ -656,13 +834,21 @@ export default {
 .user-message {
   background: linear-gradient(
     135deg,
-    #4f46e5 0%,
-    #3b82f6 100%
-  ); /* 优雅的渐变蓝 */
-  color: white;
+    #f8fafc 0%,
+    #f1f5f9 100%
+  ); /* 与AI消息相同的背景 */
+  color: #1e293b; /* 与AI消息相同的文字颜色 */
   border-top-right-radius: 0.5rem;
   border-bottom-right-radius: 1.25rem;
   margin-right: 0.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.user-message:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-color: rgba(226, 232, 240, 0.9);
 }
 
 .ai-message {
@@ -675,6 +861,13 @@ export default {
   border-top-left-radius: 0.5rem;
   border-bottom-left-radius: 1.25rem;
   border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.ai-message:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-color: rgba(226, 232, 240, 0.9);
 }
 
 /* 添加样式以支持Markdown渲染 - 更现代化的设计 */
@@ -692,6 +885,11 @@ export default {
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
+:deep(pre:hover) {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  border-color: rgba(209, 213, 219, 0.9);
+}
+
 :deep(code) {
   background-color: rgba(243, 244, 246, 0.8);
   padding: 0.125rem 0.375rem;
@@ -701,11 +899,19 @@ export default {
     "Liberation Mono", "Courier New", monospace;
   color: #4f46e5;
   transition: all 0.2s ease;
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+:deep(code:hover) {
+  background-color: rgba(243, 244, 246, 0.95);
+  border-color: rgba(226, 232, 240, 0.8);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
 }
 
 .user-message :deep(code) {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #4f46e5; /* 与普通代码相同的颜色 */
 }
 
 :deep(pre code) {
@@ -725,8 +931,8 @@ export default {
 }
 
 .user-message :deep(a) {
-  color: #ffffff;
-  border-bottom-color: rgba(255, 255, 255, 0.5);
+  color: #2563eb; /* 与普通链接相同的颜色 */
+  border-bottom-color: #93c5fd; /* 与普通链接相同的边框颜色 */
 }
 
 :deep(a:hover) {
@@ -736,8 +942,8 @@ export default {
 }
 
 .user-message :deep(a:hover) {
-  color: #ffffff;
-  border-bottom-color: #ffffff;
+  color: #1d4ed8; /* 与普通链接相同的悬停颜色 */
+  border-bottom-color: #2563eb; /* 与普通链接相同的悬停边框颜色 */
 }
 
 :deep(ul),
@@ -780,14 +986,14 @@ export default {
 }
 
 .user-message :deep(blockquote) {
-  border-left-color: rgba(255, 255, 255, 0.8);
+  border-left-color: #6366f1; /* 与普通引用块相同的边框颜色 */
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.15) 0%,
-    rgba(255, 255, 255, 0.05) 100%
-  );
-  color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    #f8fafc 0%,
+    #f1f5f9 100%
+  ); /* 与普通引用块相同的背景 */
+  color: #4b5563; /* 与普通引用块相同的文字颜色 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03); /* 与普通引用块相同的阴影 */
 }
 
 :deep(table) {
@@ -832,16 +1038,32 @@ export default {
   color: inherit;
 }
 
-/* 段落间距 */
+/* 段落间距 - 优化连续空行的显示 */
 .message-markdown :deep(p) {
-  margin: 0.5rem 0;
+  margin: 0.25rem 0; /* 减小默认段落间距 */
+}
+
+/* 处理连续段落，减少过多的空白 */
+.message-markdown :deep(p + p) {
+  margin-top: 0.4rem; /* 连续段落之间的间距稍微增加一点 */
+}
+
+/* 空段落特殊处理，减少空行高度 */
+.message-markdown :deep(p:empty) {
+  margin: 0.1rem 0;
+  min-height: 0.5rem;
+  line-height: 0.5;
 }
 
 /* 用户消息内容 */
 .user-message-content {
-  display: inline-block;
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.user-message-content > div {
   max-width: 90%;
-  margin-left: auto; /* 将用户消息移到右侧 */
   text-align: right; /* 文本右对齐 */
 }
 
@@ -918,6 +1140,23 @@ export default {
     Arial, sans-serif;
   font-weight: 500;
   text-transform: uppercase;
+}
+
+/* LaTeX样式 */
+.katex-block {
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  padding: 0.5rem 0;
+}
+
+.latex-error {
+  color: #e53e3e;
+  background-color: rgba(254, 226, 226, 0.5);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
 }
 </style>
 

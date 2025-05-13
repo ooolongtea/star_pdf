@@ -4,7 +4,7 @@
 
     <!-- 聊天消息区域 - ChatGPT风格 -->
     <div
-      class="flex-1 overflow-y-auto px-0 md:px-4 py-0 bg-white pb-4"
+      class="flex-1 overflow-y-auto px-0 md:px-4 py-0 bg-gray-50 pb-4"
       ref="messagesContainer"
     >
       <div
@@ -76,7 +76,7 @@
       <form @submit.prevent="sendMessage" class="relative max-w-3xl mx-auto">
         <!-- 圆角矩形输入区域 -->
         <div
-          class="relative rounded-xl border border-gray-200 shadow-md bg-white flex items-center"
+          class="relative rounded-xl border border-gray-200 shadow-md bg-gray-50 flex items-center"
           style="width: 75%; margin: 0 auto; min-height: 65px"
         >
           <!-- 左侧工具栏 -->

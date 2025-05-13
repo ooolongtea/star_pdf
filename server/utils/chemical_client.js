@@ -156,62 +156,37 @@ async function processPatent(patentPath, options = {}, url = null) {
     console.log(`处理选项:`, options);
     console.log(`服务器URL: ${url}`);
 
-    // 检查路径是文件还是目录
-    const isDirectory = fs.lstatSync(patentPath).isDirectory();
-    const patentId = path.basename(patentPath, isDirectory ? '' : path.extname(patentPath));
+    // 检查路径是否是目录
+    if (!fs.lstatSync(patentPath).isDirectory()) {
+      throw new Error('化学式提取服务只支持处理专利目录，不支持单个文件');
+    }
+
+    const patentId = path.basename(patentPath);
     const originalFileName = path.basename(patentPath);
 
     let zipPath;
-
-    // 判断是否需要批处理模式
     let isBatchMode = false;
 
-    // 如果是目录，检查是否包含多个专利目录
-    if (isDirectory) {
-      console.log(`检查目录结构: ${patentPath}`);
+    // 检查目录结构，判断是否需要批处理模式
+    console.log(`检查目录结构: ${patentPath}`);
 
-      // 检查目录中是否包含子目录
-      const items = fs.readdirSync(patentPath);
-      const subDirs = items.filter(item => {
-        const itemPath = path.join(patentPath, item);
-        return fs.statSync(itemPath).isDirectory();
-      });
+    // 检查目录中是否包含子目录
+    const items = fs.readdirSync(patentPath);
+    const subDirs = items.filter(item => {
+      const itemPath = path.join(patentPath, item);
+      return fs.statSync(itemPath).isDirectory();
+    });
 
-      // 如果包含子目录，则认为是包含多个专利的目录，使用批处理模式
-      if (subDirs.length > 0) {
-        console.log(`发现${subDirs.length}个子目录，使用批处理模式`);
-        isBatchMode = true;
-      } else {
-        console.log(`未发现子目录，使用单个专利处理模式`);
-      }
-
-      // 压缩目录
-      zipPath = await compressDirectory(patentPath);
+    // 如果包含子目录，则认为是包含多个专利的目录，使用批处理模式
+    if (subDirs.length > 0) {
+      console.log(`发现${subDirs.length}个子目录，使用批处理模式`);
+      isBatchMode = true;
+    } else {
+      console.log(`未发现子目录，使用单个专利处理模式`);
     }
-    // 如果是PDF文件，创建临时目录，复制文件，然后压缩
-    else if (path.extname(patentPath).toLowerCase() === '.pdf') {
-      const tempDir = path.join(os.tmpdir(), 'chemical_extraction', patentId);
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
 
-      // 复制PDF文件到临时目录
-      const tempFilePath = path.join(tempDir, path.basename(patentPath));
-      fs.copyFileSync(patentPath, tempFilePath);
-
-      // 压缩临时目录
-      zipPath = await compressDirectory(tempDir);
-    }
-    // 如果是ZIP文件，直接使用
-    else if (path.extname(patentPath).toLowerCase() === '.zip') {
-      zipPath = patentPath;
-
-      // 对于ZIP文件，我们无法直接检查内部结构，默认使用非批处理模式
-      console.log(`ZIP文件，默认使用单个专利处理模式`);
-    }
-    else {
-      throw new Error(`不支持的文件类型: ${path.extname(patentPath)}`);
-    }
+    // 压缩目录
+    zipPath = await compressDirectory(patentPath);
 
     // 创建FormData对象
     const formData = new FormData();

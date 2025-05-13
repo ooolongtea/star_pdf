@@ -51,26 +51,22 @@
                 ></path>
               </svg>
               <p class="mt-2 text-sm text-gray-600">
-                拖放文件或目录到此处，或
-                <span
-                  class="text-blue-600 hover:text-blue-500 cursor-pointer mr-2"
-                  @click="$refs.fileInput.click()"
-                >
-                  浏览文件
-                </span>
+                拖放专利目录到此处，或
                 <span
                   class="text-blue-600 hover:text-blue-500 cursor-pointer"
                   @click="$refs.dirInput.click()"
                 >
-                  浏览目录
+                  浏览专利目录
                 </span>
               </p>
-              <p class="mt-1 text-xs text-gray-500">
-                支持PDF文件或专利目录，最大50MB
-              </p>
+              <p class="mt-1 text-xs text-gray-500">仅支持专利目录，最大50MB</p>
               <p class="mt-1 text-xs text-gray-500">
                 <span class="font-medium">提示：</span>
-                上传单个专利目录时不使用批处理模式，上传包含多个专利的目录时使用批处理模式
+                可以上传多个文件夹，然后一起处理
+              </p>
+              <p class="mt-1 text-xs text-gray-500">
+                <span class="font-medium">注意：</span>
+                专利名将自动使用文件夹名称
               </p>
             </div>
             <div v-else class="text-left">
@@ -119,13 +115,7 @@
                 </button>
               </div>
             </div>
-            <input
-              ref="fileInput"
-              type="file"
-              accept="application/pdf"
-              class="hidden"
-              @change="handleFileChange"
-            />
+            <!-- 不再使用单文件上传 -->
             <input
               ref="dirInput"
               type="file"
@@ -138,131 +128,94 @@
           </div>
         </div>
 
-        <!-- 专利信息表单 -->
-        <div class="mb-8" v-if="selectedFile">
-          <h2 class="text-lg font-semibold text-gray-800 mb-4">专利信息</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label
-                for="title"
-                class="block text-sm font-medium text-gray-700 mb-1"
+        <!-- 已上传的文件夹列表 -->
+        <div class="mb-8" v-if="uploadedFolders.length > 0">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">
+            已上传的文件夹
+          </h2>
+          <div class="space-y-2">
+            <div
+              v-for="(folder, index) in uploadedFolders"
+              :key="index"
+              class="flex items-center justify-between bg-gray-50 p-3 rounded-md"
+            >
+              <div class="flex items-center">
+                <svg
+                  class="h-6 w-6 text-blue-500 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                  ></path>
+                </svg>
+                <div>
+                  <div class="text-sm font-medium text-gray-900">
+                    {{ folder.name }}
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    {{ formatFileSize(folder.size) }}
+                  </div>
+                </div>
+              </div>
+              <button
+                @click="removeFolder(index)"
+                class="text-red-600 hover:text-red-800"
+                type="button"
               >
-                专利标题 <span class="text-red-500">*</span>
-              </label>
-              <input
-                id="title"
-                v-model="patentInfo.title"
-                type="text"
-                required
-                class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="输入专利标题"
-              />
-            </div>
-            <div>
-              <label
-                for="patentNumber"
-                class="block text-sm font-medium text-gray-700 mb-1"
-              >
-                专利号
-              </label>
-              <input
-                id="patentNumber"
-                v-model="patentInfo.patentNumber"
-                type="text"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="输入专利号（可选）"
-              />
-            </div>
-            <div class="md:col-span-2">
-              <label
-                for="description"
-                class="block text-sm font-medium text-gray-700 mb-1"
-              >
-                描述
-              </label>
-              <textarea
-                id="description"
-                v-model="patentInfo.description"
-                rows="3"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="输入专利描述（可选）"
-              ></textarea>
+                <svg
+                  class="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
 
         <!-- 提交按钮 -->
-        <div class="flex justify-end">
-          <!-- 目录上传时显示两个按钮 -->
-          <div
-            v-if="selectedFile && selectedFile.type === 'directory'"
-            class="flex space-x-2"
-          >
-            <button
-              type="button"
-              @click="uploadPatent(false)"
-              :disabled="!canSubmit || loading"
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-            >
-              <svg
-                v-if="loading"
-                class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {{ loading ? "上传中..." : "作为单个专利处理" }}
-            </button>
-            <button
-              type="button"
-              @click="uploadPatent(true)"
-              :disabled="!canSubmit || loading"
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50"
-            >
-              <svg
-                v-if="loading"
-                class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {{ loading ? "上传中..." : "作为多个专利批处理" }}
-            </button>
-          </div>
-          <!-- 单文件上传时显示一个按钮 -->
+        <div class="flex justify-between">
           <button
-            v-else
             type="button"
-            @click="uploadPatent(false)"
-            :disabled="!canSubmit || loading"
+            @click="addMoreFolders"
+            :disabled="loading"
+            class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg
+              class="h-4 w-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              ></path>
+            </svg>
+            添加更多文件夹
+          </button>
+
+          <button
+            type="button"
+            @click="processUploadedFolders"
+            :disabled="uploadedFolders.length === 0 || loading"
             class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             <svg
@@ -286,7 +239,13 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            {{ loading ? "上传中..." : "上传并提取" }}
+            {{
+              loading
+                ? "处理中..."
+                : uploadedFolders.length > 1
+                ? "批量处理"
+                : "处理"
+            }}
           </button>
         </div>
       </div>
@@ -520,10 +479,10 @@ export default {
     const isDragging = ref(false);
     const selectedFile = ref(null);
     const selectedPatents = ref([]);
+    const uploadedFolders = ref([]);
+
+    // 不再需要专利信息，将使用文件夹名作为专利名
     const patentInfo = reactive({
-      title: "",
-      patentNumber: "",
-      description: "",
       isDirectory: false,
       isBatchMode: false,
     });
@@ -560,10 +519,7 @@ export default {
       }
     };
 
-    // 是否可以提交
-    const canSubmit = computed(() => {
-      return selectedFile.value && patentInfo.title.trim() !== "";
-    });
+    // 不再需要canSubmit计算属性，因为我们使用uploadedFolders.length来判断是否可以处理
 
     // 获取专利列表并测试连接
     onMounted(async () => {
@@ -580,7 +536,7 @@ export default {
     const handleFileDrop = (event) => {
       isDragging.value = false;
       const items = event.dataTransfer.items;
-      const files = event.dataTransfer.files;
+      // 不再使用files变量，因为我们只处理目录
 
       // 检查是否有目录
       if (items && items.length > 0) {
@@ -595,27 +551,21 @@ export default {
         }
       }
 
-      // 如果没有目录，处理文件
-      if (files.length > 0) {
-        const file = files[0];
-        if (file.type === "application/pdf") {
-          selectedFile.value = file;
-          patentInfo.isDirectory = false;
-          patentInfo.isBatchMode = false;
-        } else {
-          store.dispatch("setError", "只支持PDF文件或专利目录");
-        }
-      }
+      // 如果没有目录，显示错误提示
+      store.dispatch(
+        "setError",
+        "化学式提取服务只支持处理专利目录，不支持单个文件"
+      );
     };
 
     // 处理文件选择
     const handleFileChange = (event) => {
-      const files = event.target.files;
-      if (files.length > 0) {
-        selectedFile.value = files[0];
-        patentInfo.isDirectory = false;
-        patentInfo.isBatchMode = false;
-      }
+      // 清空选择，因为我们不支持单个文件
+      event.target.value = null;
+      store.dispatch(
+        "setError",
+        "化学式提取服务只支持处理专利目录，不支持单个文件"
+      );
     };
 
     // 处理目录选择
@@ -651,18 +601,32 @@ export default {
         );
 
         // 创建一个表示目录的对象
-        selectedFile.value = {
+        const folderObj = {
           name: dirPath,
           type: "directory",
           size: totalSize,
           files: filesArray,
+          hasSubDirs: hasSubDirs,
         };
 
-        patentInfo.isDirectory = true;
-        patentInfo.isBatchMode = hasSubDirs;
+        // 添加到上传文件夹列表
+        uploadedFolders.value.push(folderObj);
 
-        console.log(`目录上传: ${dirPath}, 批处理模式: ${hasSubDirs}`);
+        // 清空选择，以便可以再次选择
+        event.target.value = null;
+
+        console.log(`目录上传: ${dirPath}, 添加到列表`);
       }
+    };
+
+    // 移除文件夹
+    const removeFolder = (index) => {
+      uploadedFolders.value.splice(index, 1);
+    };
+
+    // 添加更多文件夹
+    const addMoreFolders = () => {
+      document.querySelector("input[webkitdirectory]").click();
     };
 
     // 处理目录条目
@@ -676,14 +640,6 @@ export default {
           dirReader.readEntries((entries) => {
             if (entries.length === 0) {
               // 目录读取完成
-              // 创建一个表示目录的对象
-              selectedFile.value = {
-                name: entry.name,
-                type: "directory",
-                size: 0, // 无法直接获取总大小
-                files: allFiles,
-              };
-
               // 检查是否有子目录（判断批处理模式）
               const dirPaths = new Set();
               let hasSubDirs = false;
@@ -699,10 +655,19 @@ export default {
                 }
               }
 
-              patentInfo.isDirectory = true;
-              patentInfo.isBatchMode = hasSubDirs;
+              // 创建一个表示目录的对象
+              const folderObj = {
+                name: entry.name,
+                type: "directory",
+                size: 0, // 无法直接获取总大小
+                files: allFiles,
+                hasSubDirs: hasSubDirs,
+              };
 
-              console.log(`拖放目录: ${entry.name}, 批处理模式: ${hasSubDirs}`);
+              // 添加到上传文件夹列表
+              uploadedFolders.value.push(folderObj);
+
+              console.log(`拖放目录: ${entry.name}, 添加到列表`);
             } else {
               // 继续读取目录
               for (let i = 0; i < entries.length; i++) {
@@ -723,6 +688,97 @@ export default {
         };
 
         readEntries();
+      }
+    };
+
+    // 处理上传的文件夹
+    const processUploadedFolders = async () => {
+      if (uploadedFolders.value.length === 0) {
+        store.dispatch("setError", "请先上传专利目录");
+        return;
+      }
+
+      try {
+        // 判断是单个处理还是批处理
+        const isBatchMode = uploadedFolders.value.length > 1;
+
+        // 创建一个ZIP文件
+        const zip = new JSZip();
+
+        // 如果是批处理，将所有文件夹放在一个主目录下
+        if (isBatchMode) {
+          // 为每个文件夹创建一个子目录
+          for (const folder of uploadedFolders.value) {
+            for (const file of folder.files) {
+              // 获取相对路径
+              let relativePath = file.webkitRelativePath || file.fullPath;
+
+              // 确保路径以目录名开头
+              if (!relativePath.startsWith(folder.name)) {
+                relativePath = `${folder.name}/${relativePath}`;
+              }
+
+              // 添加到ZIP
+              zip.file(relativePath, file);
+            }
+          }
+        } else {
+          // 单个文件夹处理
+          const folder = uploadedFolders.value[0];
+          for (const file of folder.files) {
+            // 获取相对路径
+            let relativePath = file.webkitRelativePath || file.fullPath;
+
+            // 确保路径以目录名开头
+            if (!relativePath.startsWith(folder.name)) {
+              relativePath = `${folder.name}/${relativePath}`;
+            }
+
+            // 添加到ZIP
+            zip.file(relativePath, file);
+          }
+        }
+
+        // 生成ZIP文件
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipFileName = isBatchMode
+          ? `batch_patents_${new Date().getTime()}.zip`
+          : `${uploadedFolders.value[0].name}.zip`;
+
+        const zipFile = new File([zipBlob], zipFileName, {
+          type: "application/zip",
+        });
+
+        // 创建表单数据
+        const formData = new FormData();
+        formData.append("patent", zipFile);
+        formData.append("isDirectory", "true");
+        formData.append("isBatchMode", isBatchMode ? "true" : "false");
+
+        // 使用文件夹名作为专利名
+        if (isBatchMode) {
+          // 批处理模式下使用批处理名称
+          formData.append("title", "批量专利处理");
+        } else {
+          // 单个文件夹模式下使用文件夹名
+          formData.append("title", uploadedFolders.value[0].name);
+        }
+
+        // 发送请求
+        const response = await store.dispatch(
+          "extraction/uploadPatent",
+          formData
+        );
+
+        if (response.success) {
+          // 清空上传列表
+          uploadedFolders.value = [];
+
+          // 刷新专利列表
+          await store.dispatch("patents/fetchPatents", { limit: 5 });
+        }
+      } catch (error) {
+        console.error("处理上传文件夹失败:", error);
       }
     };
 
@@ -752,86 +808,7 @@ export default {
       return statusMap[status] || status;
     };
 
-    // 上传专利
-    const uploadPatent = async (isBatchMode = false) => {
-      if (!canSubmit.value) return;
-
-      try {
-        const formData = new FormData();
-
-        // 处理不同类型的上传
-        if (patentInfo.isDirectory) {
-          // 目录上传
-          console.log(
-            `上传目录: ${selectedFile.value.name}, 批处理模式: ${isBatchMode}`
-          );
-
-          // 创建一个ZIP文件
-          const zip = new JSZip();
-
-          // 添加所有文件到ZIP
-          // 确保files是数组
-          const filesArray = Array.isArray(selectedFile.value.files)
-            ? selectedFile.value.files
-            : Array.from(selectedFile.value.files);
-
-          for (const file of filesArray) {
-            // 获取相对路径
-            let relativePath = file.webkitRelativePath || file.fullPath;
-            // 确保路径以目录名开头
-            if (!relativePath.startsWith(selectedFile.value.name)) {
-              relativePath = `${selectedFile.value.name}/${relativePath}`;
-            }
-
-            // 添加到ZIP
-            zip.file(relativePath, file);
-          }
-
-          // 生成ZIP文件
-          const zipBlob = await zip.generateAsync({ type: "blob" });
-          const zipFile = new File(
-            [zipBlob],
-            `${selectedFile.value.name}.zip`,
-            { type: "application/zip" }
-          );
-
-          // 添加到表单
-          formData.append("patent", zipFile);
-          formData.append("isDirectory", "true");
-          formData.append("isBatchMode", isBatchMode ? "true" : "false");
-        } else {
-          // 单文件上传
-          formData.append("patent", selectedFile.value);
-          formData.append("isDirectory", "false");
-          formData.append("isBatchMode", "false");
-        }
-
-        // 添加其他信息
-        formData.append("title", patentInfo.title);
-        formData.append("patentNumber", patentInfo.patentNumber);
-        formData.append("description", patentInfo.description);
-
-        const response = await store.dispatch(
-          "extraction/uploadPatent",
-          formData
-        );
-
-        if (response.success) {
-          // 重置表单
-          selectedFile.value = null;
-          patentInfo.title = "";
-          patentInfo.patentNumber = "";
-          patentInfo.description = "";
-          patentInfo.isDirectory = false;
-          patentInfo.isBatchMode = false;
-
-          // 刷新专利列表
-          await store.dispatch("patents/fetchPatents", { limit: 5 });
-        }
-      } catch (error) {
-        console.error("上传专利失败:", error);
-      }
-    };
+    // 旧的上传专利函数已被移除，使用processUploadedFolders替代
 
     // 处理专利
     const processPatent = async (patentId) => {
@@ -972,8 +949,8 @@ export default {
       isDragging,
       selectedFile,
       selectedPatents,
+      uploadedFolders,
       patentInfo,
-      canSubmit,
       isAllSelected,
       isPatentSelected,
       togglePatentSelection,
@@ -984,13 +961,16 @@ export default {
       formatFileSize,
       formatDate,
       getStatusText,
-      uploadPatent,
       processPatent,
       deletePatent,
       downloadPatentResults,
       processBatchPatents,
       downloadBatchResults,
       deleteBatchPatents,
+      // 新增函数
+      removeFolder,
+      addMoreFolders,
+      processUploadedFolders,
       // 服务器状态相关
       serverStatus,
       isTestingConnection,

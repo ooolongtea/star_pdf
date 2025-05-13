@@ -67,11 +67,14 @@ exports.uploadPatent = (req, res) => {
 
       const { title, patentNumber, description, isDirectory, isBatchMode } = req.body;
 
-      if (!title) {
-        return res.status(400).json({
-          success: false,
-          message: '请提供专利标题'
-        });
+      // 如果没有提供标题，使用文件名作为标题
+      let patentTitle = title;
+      if (!patentTitle) {
+        // 从文件名中提取标题
+        const originalName = req.file.originalname;
+        // 移除扩展名
+        patentTitle = path.parse(originalName).name;
+        console.log(`使用文件名作为专利标题: ${patentTitle}`);
       }
 
       // 记录上传信息
@@ -86,7 +89,7 @@ exports.uploadPatent = (req, res) => {
       const patentModel = new Patent(req.db);
       const newPatent = await patentModel.create({
         userId: req.user.id,
-        title,
+        title: patentTitle,
         patentNumber: patentNumber || null,
         description: description || null,
         filePath: req.file.path,
@@ -97,9 +100,35 @@ exports.uploadPatent = (req, res) => {
         status: 'pending'
       });
 
+      // 生成任务ID
+      const taskId = uuidv4();
+
+      // 获取用户的API设置
+      const [settingsRows] = await req.db.execute(
+        'SELECT * FROM settings WHERE user_id = ?',
+        [req.user.id]
+      );
+
+      const settings = settingsRows[0] || {
+        server_url: 'http://172.19.1.81:8010',
+        chemical_extraction_server_url: 'http://172.19.1.81:8011',
+        remote_mode: true,
+        username: 'user',
+        password: 'password'
+      };
+
+      // 创建任务记录
+      await patentModel.createTask(req.user.id, newPatent.id, taskId);
+
+      // 更新专利状态为处理中
+      await patentModel.updateStatus(newPatent.id, 'processing');
+
+      // 启动异步处理
+      processPatentAsync(req.db, newPatent, taskId, settings);
+
       res.status(201).json({
         success: true,
-        message: '专利文件上传成功',
+        message: '专利文件上传成功并开始处理',
         data: {
           patent: {
             id: newPatent.id,
@@ -107,9 +136,10 @@ exports.uploadPatent = (req, res) => {
             patentNumber: newPatent.patentNumber,
             description: newPatent.description,
             fileSize: newPatent.fileSize,
-            status: newPatent.status,
+            status: 'processing',
             createdAt: new Date()
-          }
+          },
+          taskId: taskId
         }
       });
     } catch (error) {

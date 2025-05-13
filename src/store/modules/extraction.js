@@ -53,8 +53,8 @@ const mutations = {
 
 // 动作
 const actions = {
-  // 上传专利文件
-  async uploadPatent({ dispatch }, formData) {
+  // 上传专利文件并自动开始处理
+  async uploadPatent({ commit, dispatch }, formData) {
     try {
       dispatch('setLoading', true, { root: true });
       const response = await axios.post('/api/extraction/upload', formData, {
@@ -66,8 +66,22 @@ const actions = {
       if (response.data.success) {
         dispatch('setNotification', {
           type: 'success',
-          message: '专利文件上传成功'
+          message: '专利文件上传成功并开始处理'
         }, { root: true });
+
+        // 如果返回了任务ID，开始轮询任务状态
+        if (response.data.data.taskId) {
+          commit('SET_CURRENT_TASK', {
+            task_id: response.data.data.taskId,
+            patent_id: response.data.data.patent.id,
+            status: 'running',
+            progress: 0,
+            message: '任务已创建，正在处理中'
+          });
+
+          // 开始轮询任务状态
+          dispatch('pollTaskStatus', response.data.data.taskId, { count: 0, interval: 5000 });
+        }
 
         // 刷新专利列表
         dispatch('patents/fetchPatents', {}, { root: true });
