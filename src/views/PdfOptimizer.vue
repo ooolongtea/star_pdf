@@ -344,7 +344,7 @@
 import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useStore } from "vuex";
-import axios from "axios";
+import axios from "../plugins/axios"; // 使用配置好的axios实例
 import OptimizationPrompt from "@/components/OptimizationPrompt.vue";
 
 export default {

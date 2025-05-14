@@ -313,11 +313,9 @@ exports.testConnection = async (req, res) => {
       serverUrl = serverUrl.substring(0, serverUrl.length - 8);
     }
 
-    console.log(`测试与远程服务器的连接: ${serverUrl}/ping`);
     const response = await axios.get(`${serverUrl}/ping`);
 
     if (response.status === 200 && response.data.status === 'ok') {
-      console.log('远程服务器连接成功:', response.data);
       return res.status(200).json({
         success: true,
         message: '远程服务器连接成功',
@@ -327,7 +325,6 @@ exports.testConnection = async (req, res) => {
       throw new Error('远程服务器返回异常状态');
     }
   } catch (error) {
-    console.error('远程服务器连接测试失败:', error);
     return res.status(500).json({
       success: false,
       message: '远程服务器连接失败',

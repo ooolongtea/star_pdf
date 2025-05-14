@@ -415,7 +415,7 @@
 
 <script>
 import { ref, onMounted, nextTick, watch, computed } from "vue";
-import axios from "axios";
+import axios from "../plugins/axios"; // 使用配置好的axios实例
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 

@@ -590,7 +590,7 @@
 <script>
 import { ref, onMounted, computed } from "vue";
 import { useStore } from "vuex";
-import axios from "axios";
+import axios from "../plugins/axios"; // 使用配置好的axios实例
 import PdfHistory from "@/components/PdfHistory.vue";
 
 export default {
@@ -750,7 +750,6 @@ export default {
             connected: true,
             message: "已连接",
           };
-          console.log("远程服务器连接成功:", response.data);
         } else {
           serverStatus.value = {
             connected: false,
