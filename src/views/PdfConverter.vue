@@ -372,6 +372,14 @@
                 下载化学式
               </a>
             </div>
+
+            <!-- AI总结组件 -->
+            <div
+              v-if="!result.error && result.markdownUrl"
+              class="mt-4 pt-4 border-t border-gray-200"
+            >
+              <PdfSummary :fileId="result.fileId" />
+            </div>
           </div>
         </div>
       </div>
@@ -592,11 +600,13 @@ import { ref, onMounted, computed } from "vue";
 import { useStore } from "vuex";
 import axios from "../plugins/axios"; // 使用配置好的axios实例
 import PdfHistory from "@/components/PdfHistory.vue";
+import PdfSummary from "@/components/PdfSummary.vue";
 
 export default {
   name: "PdfConverter",
   components: {
     PdfHistory,
+    PdfSummary,
   },
   setup() {
     const store = useStore();

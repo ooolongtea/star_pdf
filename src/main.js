@@ -11,8 +11,12 @@ import '@kangc/v-md-editor/lib/style/base-editor.css';
 // 导入主题
 import vuepressTheme from '@kangc/v-md-editor/lib/theme/vuepress.js';
 import '@kangc/v-md-editor/lib/theme/style/vuepress.css';
+// 导入 github 主题
+import githubTheme from '@kangc/v-md-editor/lib/theme/github.js';
+import '@kangc/v-md-editor/lib/theme/style/github.css';
 // 代码高亮
 import Prism from 'prismjs';
+import hljs from 'highlight.js';
 // 导入代码高亮样式
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-javascript';
@@ -27,6 +31,7 @@ import 'prismjs/components/prism-csharp';
 import 'github-markdown-css';
 
 // 配置 v-md-editor
+// 使用 Vuepress 主题
 VueMarkdownEditor.use(vuepressTheme, {
     Prism,
     // 可以在此处添加自定义配置
@@ -44,6 +49,16 @@ VueMarkdownEditor.use(vuepressTheme, {
         autofocus: false,
         // 禁用拖拽调整大小
         enableResizeObserver: false
+    }
+});
+
+// 使用 GitHub 主题
+VueMarkdownEditor.use(githubTheme, {
+    hljs,
+    config: {
+        toc: {
+            includeLevel: [1, 2, 3, 4]
+        }
     }
 });
 

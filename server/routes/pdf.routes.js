@@ -46,6 +46,14 @@ router.get('/files/:id/optimized', pdfController.getOptimizedContent);
 // 下载优化后的内容
 router.get('/files/:id/download-optimized', pdfController.downloadOptimizedContent);
 
+// 生成AI总结
+router.post('/files/:id/summary', pdfController.generateSummary);
+
+// 获取总结内容
+router.get('/files/:id/summary', pdfController.getSummaryContent);
+
+// 下载总结内容
+router.get('/files/:id/download-summary', pdfController.downloadSummaryContent);
 
 
 module.exports = router;

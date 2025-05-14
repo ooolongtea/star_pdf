@@ -15,6 +15,7 @@ import ApiKeys from '../views/ApiKeys.vue';
 import Chat from '../views/Chat.vue';
 import PdfConverter from '../views/PdfConverter.vue';
 import PdfOptimizer from '../views/PdfOptimizer.vue';
+import PdfProcessor from '../views/PdfProcessor.vue';
 import NotFound from '../views/NotFound.vue';
 
 // 路由配置
@@ -103,6 +104,12 @@ const routes = [
     path: '/pdf-optimizer/:id',
     name: 'PdfOptimizer',
     component: PdfOptimizer,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/pdf-processor/:id',
+    name: 'PdfProcessor',
+    component: PdfProcessor,
     meta: { requiresAuth: true }
   },
   {

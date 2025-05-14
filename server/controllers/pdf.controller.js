@@ -1484,56 +1484,251 @@ exports.convertPdf = async (req, res) => {
 exports.getImageFile = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const imageName = req.params.imageName;
+    let imageName = req.params.imageName;
 
-    // 构建图片路径
-    const imagePath = path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images', imageName);
 
-    // 检查文件是否存在
-    if (fs.existsSync(imagePath)) {
-      return res.sendFile(imagePath);
+    // 检查是否是截断的文件名（以...结尾）
+    const isTruncated = imageName.includes('…') || imageName.includes('...');
+
+    // 如果是截断的文件名，提取前缀部分
+    if (isTruncated) {
+      imageName = imageName.replace(/[…\.]+.*$/, '');
+      console.log(`检测到截断的文件名，使用前缀匹配: ${imageName}`);
     }
 
-    // 如果文件不存在，尝试查找类似的文件
-    const imagesDir = path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images');
-    if (fs.existsSync(imagesDir)) {
-      const files = fs.readdirSync(imagesDir);
+    // 尝试多个可能的图片路径
+    const possiblePaths = [
+      // 1. 标准路径
+      path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images', imageName),
+      // 2. 不带auto子目录的路径
+      path.join(__dirname, '../../uploads/results', fileId, 'images', imageName),
+      // 3. 直接在结果目录下的路径
+      path.join(__dirname, '../../uploads/results', fileId, imageName),
+      // 4. auto目录下的路径
+      path.join(__dirname, '../../uploads/results', fileId, 'auto', imageName),
+      // 5. 使用hash作为文件名的路径
+      path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images', imageName.split('.')[0] + '.jpg'),
+      // 6. 使用hash作为文件名的路径（png格式）
+      path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images', imageName.split('.')[0] + '.png')
+    ];
 
-      // 尝试查找匹配的文件
-      const matchingFile = files.find(file => {
-        // 尝试不同的匹配策略
-        // 1. 完全匹配
-        if (file === imageName) return true;
-
-        // 2. 前缀匹配（至少8个字符）
-        if (file.length >= 8 && imageName.length >= 8) {
-          if (file.startsWith(imageName.substring(0, 8)) ||
-            imageName.startsWith(file.substring(0, 8))) {
-            return true;
-          }
-        }
-
-        // 3. 哈希值匹配（去掉文件扩展名后比较）
-        const fileWithoutExt = file.replace(/\.[^/.]+$/, '');
-        const imageNameWithoutExt = imageName.replace(/\.[^/.]+$/, '');
-
-        if (fileWithoutExt === imageNameWithoutExt) return true;
-
-        return false;
-      });
-
-      if (matchingFile) {
-        const matchingPath = path.join(imagesDir, matchingFile);
-        return res.sendFile(matchingPath);
+    // 检查文件是否存在于任何一个可能的路径
+    // console.log('尝试以下可能的路径:');
+    for (const possiblePath of possiblePaths) {
+      // console.log(`- 检查路径: ${possiblePath}`);
+      if (fs.existsSync(possiblePath)) {
+        // console.log(`找到图片文件: ${possiblePath}`);
+        return res.sendFile(possiblePath);
       }
     }
 
+    // 如果直接路径都不存在，尝试在images目录中查找类似的文件
+    const imagesDirs = [
+      path.join(__dirname, '../../uploads/results', fileId, 'auto', 'images'),
+      path.join(__dirname, '../../uploads/results', fileId, 'images')
+    ];
+
+    for (const imagesDir of imagesDirs) {
+      console.log(`检查目录: ${imagesDir}`);
+      if (fs.existsSync(imagesDir)) {
+        const files = fs.readdirSync(imagesDir);
+        console.log(`目录 ${imagesDir} 中有 ${files.length} 个文件`);
+
+        if (files.length > 0) {
+          console.log(`目录中的前5个文件: ${files.slice(0, 5).join(', ')}`);
+        }
+
+        // 尝试查找匹配的文件
+        const matchingFile = files.find(file => {
+          // 尝试不同的匹配策略
+          // 1. 完全匹配
+          if (file === imageName) {
+            console.log(`完全匹配: ${file} === ${imageName}`);
+            return true;
+          }
+
+          // 2. 前缀匹配
+          // 如果是截断的文件名或者有足够长度的前缀（至少6个字符）
+          if (isTruncated || (file.length >= 6 && imageName.length >= 6)) {
+            const prefixLength = Math.min(imageName.length, 8); // 使用最多8个字符作为前缀
+            if (file.startsWith(imageName.substring(0, prefixLength))) {
+              console.log(`前缀匹配: ${file} 以 ${imageName.substring(0, prefixLength)} 开头`);
+              return true;
+            }
+
+            // 检查文件名是否以请求的图片名称开头
+            if (imageName.startsWith(file.substring(0, prefixLength))) {
+              console.log(`反向前缀匹配: ${imageName} 以 ${file.substring(0, prefixLength)} 开头`);
+              return true;
+            }
+          }
+
+          // 3. 哈希值匹配（去掉文件扩展名后比较）
+          const fileWithoutExt = file.replace(/\.[^/.]+$/, '');
+          const imageNameWithoutExt = imageName.replace(/\.[^/.]+$/, '');
+
+          if (fileWithoutExt === imageNameWithoutExt) {
+            console.log(`哈希值匹配: ${fileWithoutExt} === ${imageNameWithoutExt}`);
+            return true;
+          }
+
+          // 4. 部分哈希匹配（对于长哈希值文件名）
+          if (fileWithoutExt.length > 20 && imageNameWithoutExt.length > 6) {
+            // 使用前6个字符进行匹配
+            if (fileWithoutExt.startsWith(imageNameWithoutExt.substring(0, 6))) {
+              console.log(`部分哈希匹配: ${fileWithoutExt} 以 ${imageNameWithoutExt.substring(0, 6)} 开头`);
+              return true;
+            }
+
+            // 使用后6个字符进行匹配
+            if (fileWithoutExt.endsWith(imageNameWithoutExt.substring(imageNameWithoutExt.length - 6))) {
+              console.log(`部分哈希匹配(后缀): ${fileWithoutExt} 以 ${imageNameWithoutExt.substring(imageNameWithoutExt.length - 6)} 结尾`);
+              return true;
+            }
+
+            // 检查是否包含部分哈希
+            if (fileWithoutExt.includes(imageNameWithoutExt.substring(0, 10))) {
+              console.log(`包含哈希匹配: ${fileWithoutExt} 包含 ${imageNameWithoutExt.substring(0, 10)}`);
+              return true;
+            }
+
+            // 检查是否包含部分哈希（反向）
+            if (imageNameWithoutExt.includes(fileWithoutExt.substring(0, 10))) {
+              console.log(`反向包含哈希匹配: ${imageNameWithoutExt} 包含 ${fileWithoutExt.substring(0, 10)}`);
+              return true;
+            }
+          }
+
+          // 5. 检查文件扩展名
+          // 如果请求的图片名称没有扩展名，尝试匹配相同名称但有扩展名的文件
+          if (!imageName.includes('.')) {
+            const fileNameWithoutExt = file.replace(/\.[^/.]+$/, '');
+            if (fileNameWithoutExt === imageName) {
+              console.log(`扩展名匹配: ${fileNameWithoutExt} === ${imageName}`);
+              return true;
+            }
+          }
+
+          return false;
+        });
+
+        if (matchingFile) {
+          const matchingPath = path.join(imagesDir, matchingFile);
+          console.log(`找到匹配的图片文件: ${matchingFile}`);
+          return res.sendFile(matchingPath);
+        }
+      } else {
+        console.log(`目录不存在: ${imagesDir}`);
+      }
+    }
+
+    // 如果仍然找不到，尝试在整个结果目录中递归查找
+    const resultsDir = path.join(__dirname, '../../uploads/results', fileId);
+    if (fs.existsSync(resultsDir)) {
+      console.log(`在整个结果目录中递归查找图片: ${imageName}`);
+
+      // 递归查找函数
+      const findImageRecursively = (dir) => {
+        const items = fs.readdirSync(dir);
+
+        for (const item of items) {
+          const itemPath = path.join(dir, item);
+          const stats = fs.statSync(itemPath);
+
+          if (stats.isDirectory()) {
+            // 递归查找子目录
+            const found = findImageRecursively(itemPath);
+            if (found) return found;
+          } else if (stats.isFile()) {
+            // 检查是否匹配
+            if (item === imageName) {
+              console.log(`递归查找 - 完全匹配: ${item}`);
+              return itemPath;
+            }
+
+            // 检查哈希值匹配
+            const itemWithoutExt = item.replace(/\.[^/.]+$/, '');
+            const imageNameWithoutExt = imageName.replace(/\.[^/.]+$/, '');
+
+            if (itemWithoutExt === imageNameWithoutExt) {
+              console.log(`递归查找 - 哈希值匹配: ${itemWithoutExt}`);
+              return itemPath;
+            }
+
+            // 检查部分哈希匹配
+            if (itemWithoutExt.length > 20 && imageNameWithoutExt.length > 6) {
+              if (itemWithoutExt.startsWith(imageNameWithoutExt.substring(0, 6))) {
+                console.log(`递归查找 - 部分哈希匹配: ${itemWithoutExt}`);
+                return itemPath;
+              }
+
+              // 检查是否包含部分哈希
+              if (itemWithoutExt.includes(imageNameWithoutExt.substring(0, 10))) {
+                console.log(`递归查找 - 包含哈希匹配: ${itemWithoutExt}`);
+                return itemPath;
+              }
+
+              // 检查是否包含部分哈希（反向）
+              if (imageNameWithoutExt.includes(itemWithoutExt.substring(0, 10))) {
+                console.log(`递归查找 - 反向包含哈希匹配: ${imageNameWithoutExt}`);
+                return itemPath;
+              }
+            }
+
+            // 检查文件扩展名
+            const itemExt = path.extname(item).toLowerCase();
+            if (['.jpg', '.jpeg', '.png', '.gif'].includes(itemExt)) {
+              // 如果是图片文件，检查文件名是否相似
+              const similarity = calculateSimilarity(itemWithoutExt, imageNameWithoutExt);
+              if (similarity > 0.7) { // 70%相似度
+                console.log(`递归查找 - 相似度匹配 (${similarity.toFixed(2)}): ${item}`);
+                return itemPath;
+              }
+            }
+          }
+        }
+
+        return null;
+      };
+
+      // 计算两个字符串的相似度（简单实现）
+      const calculateSimilarity = (str1, str2) => {
+        // 如果字符串长度差异太大，直接返回低相似度
+        if (Math.abs(str1.length - str2.length) > Math.min(str1.length, str2.length) * 0.5) {
+          return 0;
+        }
+
+        // 计算公共子串长度
+        let commonChars = 0;
+        const minLength = Math.min(str1.length, str2.length);
+        for (let i = 0; i < minLength; i++) {
+          if (str1[i] === str2[i]) {
+            commonChars++;
+          }
+        }
+
+        return commonChars / Math.max(str1.length, str2.length);
+      };
+
+      const foundImagePath = findImageRecursively(resultsDir);
+      if (foundImagePath) {
+        console.log(`递归查找找到图片文件: ${foundImagePath}`);
+        return res.sendFile(foundImagePath);
+      }
+    } else {
+      console.log(`结果目录不存在: ${resultsDir}`);
+    }
+
     // 如果找不到匹配的文件，返回404错误
+    console.log(`未找到图片文件: ${imageName}`);
     return res.status(404).json({
       success: false,
-      message: '图片文件不存在'
+      message: '图片文件不存在',
+      requestedImage: imageName,
+      fileId: fileId
     });
   } catch (error) {
+    console.error('获取图片文件错误:', error);
     res.status(500).json({
       success: false,
       message: '获取图片文件失败',
@@ -2258,6 +2453,355 @@ exports.getOptimizedContent = async (req, res) => {
 };
 
 
+
+// 生成AI总结
+exports.generateSummary = async (req, res) => {
+  // 创建一个清理函数，用于在处理完成或发生错误时清理资源
+  const tempDirs = [];
+  const cleanupResources = () => {
+    try {
+      console.log('清理临时资源...');
+      // 清理临时目录
+      for (const dir of tempDirs) {
+        if (fs.existsSync(dir)) {
+          // 使用递归删除目录
+          fs.rmSync(dir, { recursive: true, force: true });
+          console.log(`已清理临时目录: ${dir}`);
+        }
+      }
+    } catch (error) {
+      console.error('清理资源时出错:', error);
+    }
+  };
+
+  let connection;
+  try {
+    const { id } = req.params;
+
+    connection = await pool.getConnection();
+
+    // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+    const userId = req.user && req.user.id ? req.user.id : 1;
+
+    // 查询文件信息
+    const [rows] = await connection.execute(
+      'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '文件不存在或无权访问'
+      });
+    }
+
+    const fileInfo = rows[0];
+
+    // 检查是否有Markdown内容
+    if (!fileInfo.markdown_path) {
+      return res.status(404).json({
+        success: false,
+        message: '找不到Markdown内容，无法生成总结'
+      });
+    }
+
+    // 读取Markdown内容
+    const markdownPath = path.join(__dirname, '../..', fileInfo.markdown_path);
+    if (!fs.existsSync(markdownPath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Markdown文件不存在'
+      });
+    }
+
+    const markdownContent = fs.readFileSync(markdownPath, 'utf8');
+
+    // 创建临时目录用于存储进度信息
+    const tempDir = path.join(os.tmpdir(), `pdf_summary_${id}_${Date.now()}`);
+    tempDirs.push(tempDir);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    // 创建总结结果目录
+    const summaryDir = path.join(path.dirname(markdownPath), 'summary');
+    if (!fs.existsSync(summaryDir)) {
+      fs.mkdirSync(summaryDir, { recursive: true });
+    }
+
+    // 读取内容提取模板
+    const templatePath = path.join(__dirname, '../../内容提取模板.md');
+    if (!fs.existsSync(templatePath)) {
+      return res.status(404).json({
+        success: false,
+        message: '找不到内容提取模板'
+      });
+    }
+
+    const templateContent = fs.readFileSync(templatePath, 'utf8');
+
+    // 调用AI模型API进行总结
+    const chatController = require('./chat.controller');
+
+    // 获取用户的API密钥
+    const [apiKeyRows] = await connection.execute(
+      'SELECT api_key, api_base_url FROM api_keys WHERE user_id = ? AND model_name = ? AND is_active = 1',
+      [userId, 'qwen']
+    );
+
+    if (apiKeyRows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '未找到Qwen模型的API密钥，请在API密钥管理中添加'
+      });
+    }
+
+    const apiKey = apiKeyRows[0].api_key;
+    const apiBaseUrl = apiKeyRows[0].api_base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+
+    // 使用qwen-long模型
+    const modelToUse = 'qwen-long';
+    console.log(`使用模型: ${modelToUse} 进行专利总结`);
+
+    // 构建消息
+    const messages = [
+      {
+        role: 'system',
+        content: '你是一个专业的专利信息提取专家，擅长从专利文档中提取关键信息，并按照指定的模板格式进行整理。'
+      },
+      {
+        role: 'user',
+        content: `请根据以下模板，从专利文档中提取关键信息，并填充到模板中。请保持模板的格式不变，只替换模板中的占位符内容。\n\n模板：\n${templateContent}\n\n专利文档内容：\n${markdownContent}`
+      }
+    ];
+
+    // 调用AI模型生成总结
+    const summaryContent = await chatController.callQwenApi(messages, apiKey, apiBaseUrl, modelToUse, false);
+
+    if (!summaryContent) {
+      throw new Error('生成总结失败，AI模型返回的内容为空');
+    }
+
+    // 保存总结内容
+    const summaryPath = path.join(summaryDir, `${path.basename(markdownPath, '.md')}_summary.md`);
+    fs.writeFileSync(summaryPath, summaryContent);
+
+    console.log('总结内容已保存到:', summaryPath);
+
+    // 更新数据库中的总结路径
+    const relativeSummaryPath = path.relative(path.join(__dirname, '../..'), summaryPath);
+    await connection.execute(
+      'UPDATE pdf_files SET summary_path = ? WHERE id = ?',
+      [relativeSummaryPath, id]
+    );
+
+    // 返回总结内容
+    res.status(200).json({
+      success: true,
+      message: '专利总结生成成功',
+      data: summaryContent
+    });
+  } catch (error) {
+    console.error('生成总结错误:', error);
+    console.error('错误详情:', error.response?.data || error.message);
+
+    // 检查是否是API密钥错误
+    if (error.response?.data?.error?.code === 'InvalidApiKey') {
+      return res.status(400).json({
+        success: false,
+        message: 'API密钥无效，请在API密钥管理中更新',
+        error: error.message
+      });
+    }
+
+    // 检查是否是配额不足
+    if (error.response?.data?.error?.code === 'QuotaExceeded') {
+      return res.status(400).json({
+        success: false,
+        message: 'API配额已用尽，请稍后再试或更新API密钥',
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: '生成总结失败: ' + (error.message || '未知错误'),
+      error: error.message
+    });
+  } finally {
+    if (connection) connection.release();
+    // 清理临时资源
+    cleanupResources();
+  }
+};
+
+// 获取总结内容
+exports.getSummaryContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const connection = await pool.getConnection();
+    try {
+      // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+      const userId = req.user && req.user.id ? req.user.id : 1;
+
+      // 查询文件信息
+      const [rows] = await connection.execute(
+        'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: '文件不存在或无权访问'
+        });
+      }
+
+      const fileInfo = rows[0];
+
+      // 检查是否有总结内容
+      if (!fileInfo.summary_path) {
+        return res.status(404).json({
+          success: false,
+          message: '找不到总结内容'
+        });
+      }
+
+      // 读取总结内容
+      const summaryPath = path.join(__dirname, '../..', fileInfo.summary_path);
+      if (!fs.existsSync(summaryPath)) {
+        return res.status(404).json({
+          success: false,
+          message: '总结文件不存在'
+        });
+      }
+
+      const summaryContent = fs.readFileSync(summaryPath, 'utf8');
+
+      // 返回总结内容
+      res.status(200).json({
+        success: true,
+        data: summaryContent
+      });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('获取总结内容错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取总结内容失败',
+      error: error.message
+    });
+  }
+};
+
+// 下载总结内容
+exports.downloadSummaryContent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const connection = await pool.getConnection();
+    try {
+      // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+      const userId = req.user && req.user.id ? req.user.id : 1;
+
+      // 查询文件信息
+      const [rows] = await connection.execute(
+        'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: '文件不存在或无权访问'
+        });
+      }
+
+      const fileInfo = rows[0];
+
+      // 检查是否有总结内容
+      if (!fileInfo.summary_path) {
+        return res.status(404).json({
+          success: false,
+          message: '找不到总结内容'
+        });
+      }
+
+      // 读取总结内容
+      const summaryPath = path.join(__dirname, '../..', fileInfo.summary_path);
+      if (!fs.existsSync(summaryPath)) {
+        return res.status(404).json({
+          success: false,
+          message: '总结文件不存在'
+        });
+      }
+
+      // 处理可能的文件名编码问题
+      let originalFilename = fileInfo.original_filename;
+      try {
+        // 使用更可靠的方法处理中文文件名
+        if (/[\u0080-\uffff]/.test(originalFilename)) {
+          // 尝试使用不同的编码方式解码
+          try {
+            // 尝试UTF-8解码
+            const buffer = Buffer.from(originalFilename, 'binary');
+            const utf8Name = buffer.toString('utf8');
+            if (utf8Name !== originalFilename && /[\u4e00-\u9fa5]/.test(utf8Name)) {
+              originalFilename = utf8Name;
+            }
+          } catch (e) {
+            // 如果UTF-8解码失败，尝试GBK/GB2312编码
+            try {
+              const iconv = require('iconv-lite');
+              if (iconv.encodingExists('gbk')) {
+                const buffer = Buffer.from(originalFilename, 'binary');
+                const gbkName = iconv.decode(buffer, 'gbk');
+                if (gbkName.length > 0 && /[\u4e00-\u9fa5]/.test(gbkName)) {
+                  originalFilename = gbkName;
+                }
+              }
+            } catch (gbkError) {
+              console.error('GBK解码失败:', gbkError);
+            }
+          }
+        }
+
+        // 移除任何不可打印字符
+        originalFilename = originalFilename.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        // 确保文件名是有效的
+        if (!originalFilename || originalFilename.trim() === '') {
+          originalFilename = '未命名文件';
+        }
+      } catch (error) {
+        console.error('文件名解码错误:', error);
+        // 如果解码失败，使用原始文件名
+      }
+
+      // 提取原始文件名（不带扩展名）
+      const fileNameWithoutExt = originalFilename.replace(/\.[^/.]+$/, '');
+      // 确保文件名不包含非法字符
+      const safeFileName = fileNameWithoutExt.replace(/[\\/:*?"<>|]/g, '_');
+      const downloadFileName = `${safeFileName}_专利总结.md`;
+
+      // 发送文件
+      res.download(summaryPath, downloadFileName);
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('下载总结内容错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '下载总结内容失败',
+      error: error.message
+    });
+  }
+};
 
 // 下载优化后的内容
 exports.downloadOptimizedContent = async (req, res) => {

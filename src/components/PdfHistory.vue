@@ -230,6 +230,14 @@
                   </button>
                   <button
                     v-if="file.status === 'completed'"
+                    @click="processorFile(file)"
+                    class="text-purple-600 hover:text-purple-900"
+                    title="使用AI处理专利文档"
+                  >
+                    处理
+                  </button>
+                  <button
+                    v-if="file.status === 'completed'"
                     @click="downloadAllResults(file.id)"
                     class="text-green-600 hover:text-green-900"
                   >
@@ -252,21 +260,38 @@
     <!-- 文件预览对话框 -->
     <div
       v-if="showPreview"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50"
     >
       <div
-        class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col"
+        class="bg-white rounded-lg shadow-2xl w-11/12 max-w-6xl max-h-[92vh] flex flex-col"
       >
-        <div class="px-6 py-4 border-b flex justify-between items-center">
-          <h3
-            class="text-lg font-medium text-gray-900 truncate max-w-lg"
-            :title="selectedFile?.originalFilename"
-          >
-            {{ selectedFile?.originalFilename }}
-          </h3>
+        <div
+          class="px-6 py-4 border-b flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50"
+        >
+          <div class="flex items-center">
+            <svg
+              class="h-5 w-5 text-blue-500 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              ></path>
+            </svg>
+            <h3
+              class="text-lg font-medium text-gray-900 truncate max-w-lg"
+              :title="selectedFile?.originalFilename"
+            >
+              {{ selectedFile?.originalFilename }}
+            </h3>
+          </div>
           <button
             @click="closePreview"
-            class="text-gray-400 hover:text-gray-500"
+            class="text-gray-400 hover:text-gray-600 transition-colors duration-200 p-1 rounded-full hover:bg-gray-100"
           >
             <svg
               class="h-6 w-6"
@@ -283,39 +308,74 @@
             </svg>
           </button>
         </div>
-        <div class="flex-1 overflow-auto p-6">
-          <div v-if="loadingPreview" class="flex justify-center py-8">
-            <div
-              class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"
-            ></div>
+        <div class="flex-1 overflow-auto p-6 bg-gray-50">
+          <div v-if="loadingPreview" class="flex justify-center py-12">
+            <div class="flex flex-col items-center">
+              <div
+                class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-3"
+              ></div>
+              <p class="text-gray-600">正在加载文档内容...</p>
+            </div>
           </div>
           <div
             v-else-if="previewError"
-            class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md"
+            class="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-md shadow-sm"
           >
-            <p class="font-medium">加载失败</p>
-            <p class="text-sm">{{ previewError }}</p>
+            <p class="font-medium flex items-center">
+              <svg class="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+              加载失败
+            </p>
+            <p class="text-sm mt-1">{{ previewError }}</p>
           </div>
           <div v-else>
             <!-- Markdown 预览 -->
-            <v-md-editor
+            <div
               v-if="markdownContent"
-              v-model="markdownContent"
-              mode="preview"
-              class="markdown-preview"
-              :preview-theme="'github'"
-              @image-click="handleImageClick"
-            ></v-md-editor>
+              class="bg-white rounded-lg shadow-sm p-6 mb-6"
+            >
+              <v-md-editor
+                v-model="markdownContent"
+                mode="preview"
+                class="markdown-preview enhanced-markdown"
+                :preview-theme="'github'"
+                :default-show-toc="true"
+                :include-level="[1, 2, 3]"
+                @image-click="handleImageClick"
+              ></v-md-editor>
+            </div>
 
             <!-- 文件列表 -->
             <div
               v-if="
                 fileResults && fileResults.files && fileResults.files.length > 0
               "
-              class="mt-6"
+              class="bg-white rounded-lg shadow-sm p-6"
             >
-              <h4 class="text-lg font-medium text-gray-800 mb-3">所有文件</h4>
-              <div class="overflow-x-auto">
+              <h4
+                class="text-lg font-medium text-gray-800 mb-4 flex items-center"
+              >
+                <svg
+                  class="h-5 w-5 mr-2 text-blue-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                  ></path>
+                </svg>
+                所有文件
+              </h4>
+              <div class="overflow-x-auto rounded-lg border border-gray-200">
                 <table class="min-w-full divide-y divide-gray-200">
                   <thead class="bg-gray-50">
                     <tr>
@@ -346,9 +406,14 @@
                     </tr>
                   </thead>
                   <tbody class="bg-white divide-y divide-gray-200">
-                    <tr v-for="(file, index) in fileResults.files" :key="index">
+                    <tr
+                      v-for="(file, index) in fileResults.files"
+                      :key="index"
+                      class="hover:bg-blue-50 transition-colors duration-150"
+                    >
                       <td
-                        class="px-4 py-3 whitespace-nowrap text-sm text-gray-900"
+                        class="px-4 py-3 text-sm text-gray-900 truncate max-w-xs"
+                        :title="file.name"
                       >
                         {{ file.name }}
                       </td>
@@ -367,8 +432,21 @@
                       >
                         <button
                           @click="downloadSingleFile(file.url)"
-                          class="text-blue-600 hover:text-blue-900"
+                          class="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
                         >
+                          <svg
+                            class="h-4 w-4 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                            ></path>
+                          </svg>
                           下载
                         </button>
                       </td>
@@ -379,31 +457,55 @@
             </div>
           </div>
         </div>
-        <div class="px-6 py-4 border-t flex justify-between">
-          <button
-            v-if="selectedFile && selectedFile.status === 'completed'"
-            @click="optimizeFile(selectedFile)"
-            class="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-md hover:from-blue-600 hover:to-indigo-700 shadow-sm flex items-center"
-          >
-            <svg
-              class="w-4 h-4 mr-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
+        <div
+          class="px-6 py-4 border-t flex justify-between bg-gradient-to-r from-blue-50 to-indigo-50"
+        >
+          <div class="flex space-x-2">
+            <button
+              v-if="selectedFile && selectedFile.status === 'completed'"
+              @click="optimizeFile(selectedFile)"
+              class="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-md hover:from-blue-600 hover:to-indigo-700 shadow-sm flex items-center transition-all duration-200 transform hover:scale-105"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              ></path>
-            </svg>
-            AI优化内容
-          </button>
+              <svg
+                class="w-4 h-4 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                ></path>
+              </svg>
+              AI优化内容
+            </button>
+            <button
+              v-if="selectedFile && selectedFile.status === 'completed'"
+              @click="processorFile(selectedFile)"
+              class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-md hover:from-purple-600 hover:to-pink-600 shadow-sm flex items-center transition-all duration-200 transform hover:scale-105"
+            >
+              <svg
+                class="w-4 h-4 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                ></path>
+              </svg>
+              AI处理专利
+            </button>
+          </div>
           <button
             @click="closePreview"
-            class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+            class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors duration-200 shadow-sm"
           >
             关闭
           </button>
@@ -460,7 +562,10 @@ export default {
       content = content.replace(
         /!\[([^\]]*)\]\(images\/([^)]+)\)/g,
         (_, alt, imgPath) => {
-          return `![${alt || "图片"}](/api/pdf/files/${
+          // 确保不截断图片文件名，并使用正确的服务器地址
+          const apiBaseUrl =
+            process.env.VUE_APP_API_URL || "http://localhost:3000";
+          return `![${alt || "图片"}](${apiBaseUrl}/api/pdf/files/${
             selectedFile.value.id
           }/images/${imgPath})`;
         }
@@ -470,7 +575,48 @@ export default {
       content = content.replace(
         /<img([^>]*)src=["']images\/([^"']+)["']([^>]*)>/g,
         (_, before, imgPath, after) => {
-          return `<img${before}src="/api/pdf/files/${selectedFile.value.id}/images/${imgPath}"${after}>`;
+          // 确保不截断图片文件名，并使用正确的服务器地址
+          const apiBaseUrl =
+            process.env.VUE_APP_API_URL || "http://localhost:3000";
+          return `<img${before}src="${apiBaseUrl}/api/pdf/files/${selectedFile.value.id}/images/${imgPath}"${after}>`;
+        }
+      );
+
+      // 处理可能的绝对路径图片引用（以/开头）
+      content = content.replace(
+        /!\[([^\]]*)\]\(\/([^)]+)\)/g,
+        (match, alt, imgPath) => {
+          // 如果路径中包含 /images/ 并且不是已经处理过的API路径
+          if (
+            imgPath.includes("/images/") &&
+            !imgPath.includes("/api/pdf/files/")
+          ) {
+            const imgName = imgPath.split("/").pop();
+            const apiBaseUrl =
+              process.env.VUE_APP_API_URL || "http://localhost:3000";
+            return `![${alt || "图片"}](${apiBaseUrl}/api/pdf/files/${
+              selectedFile.value.id
+            }/images/${imgName})`;
+          }
+          return match; // 不修改其他绝对路径
+        }
+      );
+
+      // 处理可能的绝对路径HTML图片引用
+      content = content.replace(
+        /<img([^>]*)src=["']\/([^"']+)["']([^>]*)>/g,
+        (match, before, imgPath, after) => {
+          // 如果路径中包含 /images/ 并且不是已经处理过的API路径
+          if (
+            imgPath.includes("/images/") &&
+            !imgPath.includes("/api/pdf/files/")
+          ) {
+            const imgName = imgPath.split("/").pop();
+            const apiBaseUrl =
+              process.env.VUE_APP_API_URL || "http://localhost:3000";
+            return `<img${before}src="${apiBaseUrl}/api/pdf/files/${selectedFile.value.id}/images/${imgName}"${after}>`;
+          }
+          return match; // 不修改其他绝对路径
         }
       );
 
@@ -647,6 +793,11 @@ export default {
     // 跳转到优化页面
     const optimizeFile = (file) => {
       router.push({ name: "PdfOptimizer", params: { id: file.id } });
+    };
+
+    // 跳转到处理页面
+    const processorFile = (file) => {
+      router.push({ name: "PdfProcessor", params: { id: file.id } });
     };
 
     // 格式化文件大小
@@ -968,12 +1119,12 @@ export default {
       fileResults,
       selectedFiles,
       isAllSelected,
-
       // 文件操作
       loadFiles,
       viewFile,
       closePreview,
       optimizeFile,
+      processorFile,
       downloadAllResults,
       downloadSingleFile,
       deleteFile,
@@ -1028,30 +1179,158 @@ export default {
 .markdown-preview {
   max-width: 100%;
   height: auto;
+  font-size: 1rem;
+  line-height: 1.7;
 }
 
-/* 确保图片不超出容器 */
-.markdown-preview img {
+/* 增强版Markdown样式 */
+.enhanced-markdown :deep(h1) {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #1e40af;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.enhanced-markdown :deep(h2) {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #2563eb;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.enhanced-markdown :deep(h3) {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #3b82f6;
+  margin-top: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.enhanced-markdown :deep(p) {
+  margin-bottom: 1rem;
+}
+
+.enhanced-markdown :deep(ul),
+.enhanced-markdown :deep(ol) {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.enhanced-markdown :deep(li) {
+  margin-bottom: 0.5rem;
+}
+
+.enhanced-markdown :deep(blockquote) {
+  border-left: 4px solid #3b82f6;
+  padding-left: 1rem;
+  color: #4b5563;
+  font-style: italic;
+  margin: 1rem 0;
+  background-color: #f3f4f6;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+}
+
+/* 确保图片不超出容器并添加样式 */
+.enhanced-markdown :deep(img) {
   max-width: 100%;
   height: auto;
+  border-radius: 0.375rem;
+  margin: 1rem 0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease-in-out;
+  opacity: 0;
+  animation: fadeIn 0.5s ease-in-out forwards;
+  background-color: #f3f4f6;
+  min-height: 100px;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.enhanced-markdown :deep(img:hover) {
+  transform: scale(1.01);
 }
 
 /* 调整代码块样式 */
-.markdown-preview pre {
-  border-radius: 4px;
-  margin: 1em 0;
+.enhanced-markdown :deep(pre) {
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+}
+
+.enhanced-markdown :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  background-color: #f1f5f9;
+  color: #ef4444;
+}
+
+.enhanced-markdown :deep(pre code) {
+  padding: 0;
+  background-color: transparent;
+  color: inherit;
 }
 
 /* 调整表格样式 */
-.markdown-preview table {
+.enhanced-markdown :deep(table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 1em 0;
+  margin: 1.5rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
-.markdown-preview th,
-.markdown-preview td {
-  border: 1px solid #ddd;
-  padding: 8px;
+.enhanced-markdown :deep(thead) {
+  background-color: #f3f4f6;
+}
+
+.enhanced-markdown :deep(th) {
+  background-color: #f3f4f6;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid #e5e7eb;
+  color: #374151;
+}
+
+.enhanced-markdown :deep(td) {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+}
+
+.enhanced-markdown :deep(tr:last-child td) {
+  border-bottom: none;
+}
+
+.enhanced-markdown :deep(td:last-child) {
+  border-right: none;
+}
+
+.enhanced-markdown :deep(tr:nth-child(even)) {
+  background-color: #f9fafb;
+}
+
+.enhanced-markdown :deep(tr:hover) {
+  background-color: #f3f4f6;
 }
 </style>
