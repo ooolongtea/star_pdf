@@ -1,6 +1,6 @@
 <template>
   <div class="pdf-summary">
-    <div class="bg-white rounded-lg shadow-md p-4">
+    <div class="bg-white rounded-xl shadow-md p-5 border border-gray-100">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-medium text-gray-800">专利信息总结</h2>
         <div class="flex space-x-2">
@@ -82,7 +82,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, nextTick } from "vue";
 import { useStore } from "vuex";
 import axios from "../plugins/axios";
 
@@ -100,6 +100,77 @@ export default {
     const isGenerating = ref(false);
     const error = ref(null);
 
+    // 处理Markdown中的图片，添加懒加载指令
+    const processImagesForLazyLoading = () => {
+      // 等待DOM更新完成
+      nextTick(() => {
+        // 查找所有Markdown预览中的图片
+        const markdownContainer = document.querySelector(".enhanced-markdown");
+        if (markdownContainer) {
+          const images = markdownContainer.querySelectorAll(
+            "img:not([v-lazyload])"
+          );
+
+          // 为每个图片添加懒加载指令
+          images.forEach((img) => {
+            const originalSrc = img.getAttribute("src");
+            if (originalSrc) {
+              // 移除原始src属性
+              img.removeAttribute("src");
+              // 添加v-lazyload指令的标记
+              img.setAttribute("v-lazyload", originalSrc);
+            }
+          });
+        }
+      });
+    };
+
+    // 处理AI返回的Markdown内容
+    const processAiContent = (content) => {
+      if (!content) return "";
+
+      // 检查内容是否被```markdown包裹
+      const markdownBlockRegex = /^```(?:markdown)?\s*\n([\s\S]*?)```\s*$/;
+      const match = content.match(markdownBlockRegex);
+
+      if (match) {
+        // 如果内容被```markdown包裹，提取内部内容
+        console.log("检测到内容被Markdown代码块包裹，正在提取内容");
+        return match[1];
+      }
+
+      // 检查内容是否被多个```包裹（嵌套的代码块）
+      if (content.startsWith("```") && content.trim().endsWith("```")) {
+        // 计算```的出现次数
+        const codeBlockCount = (content.match(/```/g) || []).length;
+
+        // 如果是偶数个```，可能是整个内容被包裹
+        if (codeBlockCount >= 2 && codeBlockCount % 2 === 0) {
+          // 尝试去除最外层的```
+          const firstIndex = content.indexOf("```");
+          const lastIndex = content.lastIndexOf("```");
+
+          if (
+            firstIndex !== -1 &&
+            lastIndex !== -1 &&
+            firstIndex !== lastIndex
+          ) {
+            const extractedContent = content
+              .substring(firstIndex + 3, lastIndex)
+              .trim();
+            // 确保提取的内容不是空的
+            if (extractedContent) {
+              console.log("检测到内容被代码块包裹，正在提取内容");
+              return extractedContent;
+            }
+          }
+        }
+      }
+
+      // 如果没有特殊格式，直接返回原内容
+      return content;
+    };
+
     // 检查是否已有总结内容
     const checkSummaryContent = async () => {
       try {
@@ -113,7 +184,12 @@ export default {
         );
 
         if (response.data.success && response.data.data) {
-          summaryContent.value = response.data.data;
+          // 处理AI返回的内容
+          summaryContent.value = processAiContent(response.data.data);
+          // 处理图片懒加载
+          nextTick(() => {
+            processImagesForLazyLoading();
+          });
         }
       } catch (err) {
         // 如果没有总结内容，不显示错误
@@ -140,7 +216,12 @@ export default {
         );
 
         if (response.data.success) {
-          summaryContent.value = response.data.data;
+          // 处理AI返回的内容
+          summaryContent.value = processAiContent(response.data.data);
+          // 处理图片懒加载
+          nextTick(() => {
+            processImagesForLazyLoading();
+          });
           store.dispatch("setNotification", {
             type: "success",
             message: "专利总结生成成功！",
@@ -215,6 +296,8 @@ export default {
       error,
       generateSummary,
       downloadSummary,
+      processImagesForLazyLoading,
+      processAiContent,
     };
   },
 };

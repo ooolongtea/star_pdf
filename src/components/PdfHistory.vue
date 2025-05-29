@@ -263,7 +263,7 @@
       class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50"
     >
       <div
-        class="bg-white rounded-lg shadow-2xl w-11/12 max-w-6xl max-h-[92vh] flex flex-col"
+        class="bg-white rounded-2xl shadow-2xl w-11/12 max-w-6xl max-h-[92vh] flex flex-col overflow-hidden"
       >
         <div
           class="px-6 py-4 border-b flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50"
@@ -337,7 +337,7 @@
             <!-- Markdown 预览 -->
             <div
               v-if="markdownContent"
-              class="bg-white rounded-lg shadow-sm p-6 mb-6"
+              class="bg-white rounded-xl shadow-sm p-6 mb-6 border border-gray-100"
             >
               <v-md-editor
                 v-model="markdownContent"
@@ -355,7 +355,7 @@
               v-if="
                 fileResults && fileResults.files && fileResults.files.length > 0
               "
-              class="bg-white rounded-lg shadow-sm p-6"
+              class="bg-white rounded-xl shadow-sm p-6 border border-gray-100"
             >
               <h4
                 class="text-lg font-medium text-gray-800 mb-4 flex items-center"
@@ -551,6 +551,31 @@ export default {
       window.open(image.src, "_blank");
     };
 
+    // 处理Markdown中的图片，添加懒加载指令
+    const processImagesForLazyLoading = () => {
+      // 等待DOM更新完成
+      nextTick(() => {
+        // 查找所有Markdown预览中的图片
+        const markdownContainer = document.querySelector(".enhanced-markdown");
+        if (markdownContainer) {
+          const images = markdownContainer.querySelectorAll(
+            "img:not([v-lazyload])"
+          );
+
+          // 为每个图片添加懒加载指令
+          images.forEach((img) => {
+            const originalSrc = img.getAttribute("src");
+            if (originalSrc) {
+              // 移除原始src属性
+              img.removeAttribute("src");
+              // 添加v-lazyload指令的标记
+              img.setAttribute("v-lazyload", originalSrc);
+            }
+          });
+        }
+      });
+    };
+
     // 处理Markdown内容
     const processMarkdownContent = () => {
       if (!markdownContent.value || !selectedFile.value) return;
@@ -622,6 +647,11 @@ export default {
 
       // 更新Markdown内容
       markdownContent.value = content;
+
+      // 处理图片懒加载
+      nextTick(() => {
+        processImagesForLazyLoading();
+      });
     };
 
     // 加载文件列表
@@ -1144,6 +1174,7 @@ export default {
       getStatusText,
       handleImageClick,
       processMarkdownContent,
+      processImagesForLazyLoading,
     };
   },
 };

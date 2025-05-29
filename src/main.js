@@ -4,6 +4,7 @@ import router from './router';
 import store from './store';
 import axios from './plugins/axios';
 import './assets/styles/main.css';
+import './assets/styles/lazyload.css';
 
 // 导入 v-md-editor 相关库
 import VueMarkdownEditor from '@kangc/v-md-editor';
@@ -27,6 +28,8 @@ import 'prismjs/components/prism-c';
 import 'prismjs/components/prism-cpp';
 import 'prismjs/components/prism-java';
 import 'prismjs/components/prism-csharp';
+// 导入自定义懒加载指令
+import lazyload from './directives/lazyload';
 // 导入 github-markdown-css
 import 'github-markdown-css';
 
@@ -124,6 +127,9 @@ app.config.globalProperties.$axios = axios;
 app.use(router);
 app.use(store);
 app.use(VueMarkdownEditor);
+
+// 注册全局指令
+app.directive('lazyload', lazyload);
 
 // 挂载应用
 app.mount('#app');
