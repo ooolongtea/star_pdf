@@ -22,24 +22,40 @@
       </div>
 
       <div
-        v-if="isGenerating"
-        class="flex flex-col items-center justify-center py-8"
-      >
-        <div
-          class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4"
-        ></div>
-        <p class="text-gray-600">正在生成专利总结，请稍候...</p>
-        <p class="text-gray-500 text-sm mt-2">
-          这可能需要一些时间，取决于文档的长度和复杂度
-        </p>
-      </div>
-
-      <div
-        v-else-if="error"
+        v-if="error"
         class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md"
       >
         <p class="font-medium">生成总结失败</p>
         <p class="text-sm">{{ error }}</p>
+      </div>
+
+      <!-- 生成中状态 -->
+      <div v-else-if="isGenerating" class="text-center py-8">
+        <div class="inline-flex items-center space-x-3 mb-4">
+          <div
+            class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"
+          ></div>
+          <span class="text-gray-600">{{
+            summaryProgress.message || "正在生成专利总结，请稍候..."
+          }}</span>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="w-full max-w-md mx-auto mb-2">
+          <div class="bg-gray-200 rounded-full h-2">
+            <div
+              class="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+              :style="{ width: summaryProgress.progress + '%' }"
+            ></div>
+          </div>
+        </div>
+
+        <!-- 进度百分比 -->
+        <p class="text-gray-500 text-sm mb-2">
+          {{ summaryProgress.progress }}%
+        </p>
+
+        <p class="text-gray-400 text-center text-sm">使用AI智能分析专利内容</p>
       </div>
 
       <div
@@ -99,6 +115,13 @@ export default {
     const summaryContent = ref("");
     const isGenerating = ref(false);
     const error = ref(null);
+
+    // 总结生成进度状态
+    const summaryProgress = ref({
+      status: "idle",
+      progress: 0,
+      message: "",
+    });
 
     // 处理Markdown中的图片，添加懒加载指令
     const processImagesForLazyLoading = () => {
@@ -203,8 +226,17 @@ export default {
 
       isGenerating.value = true;
       error.value = null;
+      summaryProgress.value = {
+        status: "starting",
+        progress: 0,
+        message: "正在启动总结生成...",
+      };
+
+      // 轮询进度的定时器
+      let progressTimer = null;
 
       try {
+        // 发送生成总结请求
         const response = await axios.post(
           `/api/pdf/files/${props.fileId}/summary`,
           {},
@@ -216,22 +248,67 @@ export default {
         );
 
         if (response.data.success) {
-          // 处理AI返回的内容
-          summaryContent.value = processAiContent(response.data.data);
-          // 处理图片懒加载
-          nextTick(() => {
-            processImagesForLazyLoading();
-          });
-          store.dispatch("setNotification", {
-            type: "success",
-            message: "专利总结生成成功！",
-          });
+          // 开始轮询进度
+          progressTimer = setInterval(async () => {
+            try {
+              const progressResponse = await axios.get(
+                `/api/pdf/files/${props.fileId}/summary/progress`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${store.getters["auth/getToken"]}`,
+                  },
+                }
+              );
+
+              if (progressResponse.data.success) {
+                const progressData = progressResponse.data.data;
+                summaryProgress.value = progressData;
+
+                // 如果完成或出错，停止轮询
+                if (progressData.completed || progressData.status === "error") {
+                  clearInterval(progressTimer);
+                  isGenerating.value = false;
+
+                  if (progressData.completed && progressData.result) {
+                    // 处理AI返回的内容
+                    summaryContent.value = processAiContent(
+                      progressData.result.content
+                    );
+                    // 处理图片懒加载
+                    nextTick(() => {
+                      processImagesForLazyLoading();
+                    });
+                    store.dispatch("setNotification", {
+                      type: "success",
+                      message: "专利总结生成成功！",
+                    });
+                  } else if (progressData.status === "error") {
+                    error.value = progressData.error || "生成总结失败";
+                  }
+                }
+              }
+            } catch (progressErr) {
+              console.error("获取总结进度错误:", progressErr);
+              // 如果进度查询失败，继续轮询，但不显示错误
+            }
+          }, 2000); // 每2秒轮询一次
+
+          // 设置超时，防止无限轮询
+          setTimeout(() => {
+            if (progressTimer) {
+              clearInterval(progressTimer);
+              isGenerating.value = false;
+              error.value = "总结生成超时，请稍后重试";
+            }
+          }, 300000); // 5分钟超时
         } else {
-          error.value = response.data.message || "生成总结失败";
+          error.value = response.data.message || "启动总结生成失败";
+          isGenerating.value = false;
         }
       } catch (err) {
         console.error("生成总结错误:", err);
         error.value = err.response?.data?.message || "生成总结失败，请稍后重试";
+        isGenerating.value = false;
 
         // 检查是否是API密钥错误
         if (
@@ -240,8 +317,11 @@ export default {
         ) {
           error.value = err.response.data.message;
         }
-      } finally {
-        isGenerating.value = false;
+
+        // 清理定时器
+        if (progressTimer) {
+          clearInterval(progressTimer);
+        }
       }
     };
 
@@ -294,6 +374,7 @@ export default {
       summaryContent,
       isGenerating,
       error,
+      summaryProgress,
       generateSummary,
       downloadSummary,
       processImagesForLazyLoading,

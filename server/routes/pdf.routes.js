@@ -49,6 +49,9 @@ router.get('/files/:id/download-optimized', pdfController.downloadOptimizedConte
 // 生成AI总结
 router.post('/files/:id/summary', pdfController.generateSummary);
 
+// 获取总结生成进度
+router.get('/files/:id/summary/progress', pdfController.getSummaryProgress);
+
 // 获取总结内容
 router.get('/files/:id/summary', pdfController.getSummaryContent);
 

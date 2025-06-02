@@ -2454,27 +2454,9 @@ exports.getOptimizedContent = async (req, res) => {
 
 
 
-// 生成AI总结
+// 生成AI总结（异步处理，支持轮询进度）
 exports.generateSummary = async (req, res) => {
-  // 创建一个清理函数，用于在处理完成或发生错误时清理资源
-  const tempDirs = [];
-  const cleanupResources = () => {
-    try {
-      console.log('清理临时资源...');
-      // 清理临时目录
-      for (const dir of tempDirs) {
-        if (fs.existsSync(dir)) {
-          // 使用递归删除目录
-          fs.rmSync(dir, { recursive: true, force: true });
-          console.log(`已清理临时目录: ${dir}`);
-        }
-      }
-    } catch (error) {
-      console.error('清理资源时出错:', error);
-    }
-  };
-
-  let connection;
+  let connection = null;
   try {
     const { id } = req.params;
 
@@ -2515,34 +2497,105 @@ exports.generateSummary = async (req, res) => {
       });
     }
 
+    // 创建进度目录
+    const progressDir = path.join(__dirname, '../../uploads/progress/summary', id);
+    if (!fs.existsSync(progressDir)) {
+      fs.mkdirSync(progressDir, { recursive: true });
+    }
+
+    // 初始化进度信息
+    const progressInfo = {
+      status: 'starting',
+      progress: 0,
+      message: '正在初始化总结生成...',
+      startTime: new Date().toISOString(),
+      completed: false,
+      error: null
+    };
+
+    // 保存初始进度
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
+
+    // 立即返回响应，开始异步处理
+    res.status(200).json({
+      success: true,
+      message: '总结生成已开始，请轮询进度',
+      data: {
+        status: 'started',
+        progressUrl: `/api/pdf/files/${id}/summary/progress`
+      }
+    });
+
+    // 异步处理总结生成
+    setImmediate(async () => {
+      await processSummaryGeneration(id, userId, markdownPath, progressDir);
+    });
+
+  } catch (error) {
+    console.error('启动总结生成错误:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: '启动总结生成失败: ' + (error.message || '未知错误'),
+      error: error.message
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+// 异步处理总结生成
+async function processSummaryGeneration(fileId, userId, markdownPath, progressDir) {
+  let connection = null;
+  try {
+    console.log(`开始异步处理总结生成: ${fileId}`);
+
+    // 更新进度：正在读取内容
+    let progressInfo = {
+      status: 'reading',
+      progress: 10,
+      message: '正在读取文档内容...',
+      startTime: new Date().toISOString(),
+      completed: false,
+      error: null
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
+
+    // 读取Markdown内容
     const markdownContent = fs.readFileSync(markdownPath, 'utf8');
-
-    // 创建临时目录用于存储进度信息
-    const tempDir = path.join(os.tmpdir(), `pdf_summary_${id}_${Date.now()}`);
-    tempDirs.push(tempDir);
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    // 创建总结结果目录
-    const summaryDir = path.join(path.dirname(markdownPath), 'summary');
-    if (!fs.existsSync(summaryDir)) {
-      fs.mkdirSync(summaryDir, { recursive: true });
-    }
 
     // 读取内容提取模板
     const templatePath = path.join(__dirname, '../../内容提取模板.md');
     if (!fs.existsSync(templatePath)) {
-      return res.status(404).json({
-        success: false,
-        message: '找不到内容提取模板'
-      });
+      throw new Error('找不到内容提取模板');
     }
 
     const templateContent = fs.readFileSync(templatePath, 'utf8');
 
-    // 调用AI模型API进行总结
-    const chatController = require('./chat.controller');
+    // 更新进度：正在准备AI调用
+    progressInfo = {
+      status: 'preparing',
+      progress: 20,
+      message: '正在准备AI模型调用...',
+      startTime: progressInfo.startTime,
+      completed: false,
+      error: null
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
+
+    // 获取数据库连接
+    connection = await pool.getConnection();
 
     // 获取用户的API密钥
     const [apiKeyRows] = await connection.execute(
@@ -2551,10 +2604,7 @@ exports.generateSummary = async (req, res) => {
     );
 
     if (apiKeyRows.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: '未找到Qwen模型的API密钥，请在API密钥管理中添加'
-      });
+      throw new Error('未找到Qwen模型的API密钥，请在API密钥管理中添加');
     }
 
     const apiKey = apiKeyRows[0].api_key;
@@ -2563,6 +2613,21 @@ exports.generateSummary = async (req, res) => {
     // 使用qwen-long模型
     const modelToUse = 'qwen-long';
     console.log(`使用模型: ${modelToUse} 进行专利总结`);
+
+    // 更新进度：正在调用AI模型
+    progressInfo = {
+      status: 'processing',
+      progress: 30,
+      message: '正在调用AI模型生成总结...',
+      startTime: progressInfo.startTime,
+      completed: false,
+      error: null
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
 
     // 构建消息
     const messages = [
@@ -2576,11 +2641,50 @@ exports.generateSummary = async (req, res) => {
       }
     ];
 
+    // 调用AI模型API进行总结
+    const chatController = require('./chat.controller');
+
+    // 更新进度：AI处理中
+    progressInfo = {
+      status: 'ai_processing',
+      progress: 50,
+      message: 'AI模型正在分析文档内容...',
+      startTime: progressInfo.startTime,
+      completed: false,
+      error: null
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
+
     // 调用AI模型生成总结
     const summaryContent = await chatController.callQwenApi(messages, apiKey, apiBaseUrl, modelToUse, false);
 
     if (!summaryContent) {
       throw new Error('生成总结失败，AI模型返回的内容为空');
+    }
+
+    // 更新进度：正在保存结果
+    progressInfo = {
+      status: 'saving',
+      progress: 80,
+      message: '正在保存总结结果...',
+      startTime: progressInfo.startTime,
+      completed: false,
+      error: null
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
+
+    // 创建总结结果目录
+    const summaryDir = path.join(path.dirname(markdownPath), 'summary');
+    if (!fs.existsSync(summaryDir)) {
+      fs.mkdirSync(summaryDir, { recursive: true });
     }
 
     // 保存总结内容
@@ -2593,46 +2697,105 @@ exports.generateSummary = async (req, res) => {
     const relativeSummaryPath = path.relative(path.join(__dirname, '../..'), summaryPath);
     await connection.execute(
       'UPDATE pdf_files SET summary_path = ? WHERE id = ?',
-      [relativeSummaryPath, id]
+      [relativeSummaryPath, fileId]
     );
 
-    // 返回总结内容
-    res.status(200).json({
-      success: true,
-      message: '专利总结生成成功',
-      data: summaryContent
-    });
+    // 更新进度：完成
+    progressInfo = {
+      status: 'completed',
+      progress: 100,
+      message: '总结生成完成！',
+      startTime: progressInfo.startTime,
+      endTime: new Date().toISOString(),
+      completed: true,
+      error: null,
+      result: {
+        summaryPath: relativeSummaryPath,
+        content: summaryContent
+      }
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
+
+    console.log(`总结生成完成: ${fileId}`);
+
   } catch (error) {
-    console.error('生成总结错误:', error);
-    console.error('错误详情:', error.response?.data || error.message);
+    console.error('异步总结生成错误:', error);
 
-    // 检查是否是API密钥错误
-    if (error.response?.data?.error?.code === 'InvalidApiKey') {
-      return res.status(400).json({
-        success: false,
-        message: 'API密钥无效，请在API密钥管理中更新',
-        error: error.message
-      });
-    }
-
-    // 检查是否是配额不足
-    if (error.response?.data?.error?.code === 'QuotaExceeded') {
-      return res.status(400).json({
-        success: false,
-        message: 'API配额已用尽，请稍后再试或更新API密钥',
-        error: error.message
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: '生成总结失败: ' + (error.message || '未知错误'),
+    // 更新进度：错误
+    const progressInfo = {
+      status: 'error',
+      progress: 0,
+      message: '总结生成失败',
+      startTime: new Date().toISOString(),
+      endTime: new Date().toISOString(),
+      completed: false,
       error: error.message
-    });
+    };
+
+    fs.writeFileSync(
+      path.join(progressDir, 'progress.json'),
+      JSON.stringify(progressInfo, null, 2)
+    );
   } finally {
     if (connection) connection.release();
-    // 清理临时资源
-    cleanupResources();
+  }
+}
+
+// 获取总结生成进度
+exports.getSummaryProgress = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 使用默认用户ID 1，或者从请求中获取用户ID（如果存在）
+    const userId = req.user && req.user.id ? req.user.id : 1;
+
+    // 验证文件所有权
+    const connection = await pool.getConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT * FROM pdf_files WHERE id = ? AND user_id = ?',
+        [id, userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: '文件不存在或无权访问'
+        });
+      }
+    } finally {
+      connection.release();
+    }
+
+    // 读取进度文件
+    const progressDir = path.join(__dirname, '../../uploads/progress/summary', id);
+    const progressFile = path.join(progressDir, 'progress.json');
+
+    if (!fs.existsSync(progressFile)) {
+      return res.status(404).json({
+        success: false,
+        message: '未找到总结生成进度信息'
+      });
+    }
+
+    const progressContent = fs.readFileSync(progressFile, 'utf8');
+    const progressInfo = JSON.parse(progressContent);
+
+    res.status(200).json({
+      success: true,
+      data: progressInfo
+    });
+  } catch (error) {
+    console.error('获取总结进度错误:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取总结进度失败',
+      error: error.message
+    });
   }
 };
 
