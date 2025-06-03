@@ -519,12 +519,13 @@ async function processPatentAsync(db, patent, taskId, settings) {
     }
 
     // 优先使用化学式提取服务器下载
-    console.log(`尝试从化学式提取服务器下载结果: ${settings.chemical_extraction_server_url}/api/download_directory?dir_path=${encodeURIComponent(resultsPath)}`);
+    console.log(`尝试从化学式提取服务器下载结果，路径: ${resultsPath}`);
 
     let resultsResponse;
     try {
       // 如果有下载URL，优先使用
       if (downloadUrl) {
+        console.log(`使用返回的下载URL: ${downloadUrl}`);
         resultsResponse = await axios.get(
           downloadUrl,
           {
@@ -533,12 +534,17 @@ async function processPatentAsync(db, patent, taskId, settings) {
           }
         );
       } else {
-        // 否则使用目录下载API
-        resultsResponse = await axios.get(
-          `${settings.chemical_extraction_server_url}/api/download_directory?dir_path=${encodeURIComponent(resultsPath)}`,
+        // 使用POST请求避免URL编码问题
+        console.log(`使用POST请求下载目录: ${settings.chemical_extraction_server_url}/api/download_directory`);
+        resultsResponse = await axios.post(
+          `${settings.chemical_extraction_server_url}/api/download_directory`,
+          { dir_path: resultsPath },
           {
             responseType: 'arraybuffer',
-            timeout: 300000 // 5分钟超时
+            timeout: 300000, // 5分钟超时
+            headers: {
+              'Content-Type': 'application/json'
+            }
           }
         );
       }
@@ -549,63 +555,86 @@ async function processPatentAsync(db, patent, taskId, settings) {
     } catch (downloadError) {
       console.error('下载结果错误:', downloadError.message);
 
-      // 尝试备用下载方法 - 使用文件下载API
-      console.log(`尝试备用下载方法: ${settings.chemical_extraction_server_url}/api/download_file?file_path=${encodeURIComponent(resultsPath)}`);
-
+      // 尝试备用下载方法1 - 使用GET请求但对路径进行特殊处理
       try {
+        // 对路径进行双重编码以处理中文字符
+        const encodedPath = encodeURIComponent(encodeURIComponent(resultsPath));
+        console.log(`尝试备用下载方法1 (双重编码): ${settings.chemical_extraction_server_url}/api/download_directory?dir_path=${encodedPath}`);
+
         resultsResponse = await axios.get(
-          `${settings.chemical_extraction_server_url}/api/download_file?file_path=${encodeURIComponent(resultsPath)}`,
+          `${settings.chemical_extraction_server_url}/api/download_directory?dir_path=${encodedPath}`,
           {
             responseType: 'arraybuffer',
             timeout: 300000 // 5分钟超时
           }
         );
 
-        console.log('备用下载响应状态:', resultsResponse.status);
-        console.log('备用下载响应内容类型:', resultsResponse.headers['content-type']);
-        console.log('备用下载响应内容长度:', resultsResponse.data.length);
-      } catch (altDownloadError) {
-        console.error('备用下载方法错误:', altDownloadError.message);
+        console.log('备用下载方法1响应状态:', resultsResponse.status);
+        console.log('备用下载方法1响应内容类型:', resultsResponse.headers['content-type']);
+        console.log('备用下载方法1响应内容长度:', resultsResponse.data.length);
+      } catch (altDownloadError1) {
+        console.error('备用下载方法1错误:', altDownloadError1.message);
 
-        // 尝试第三种下载方法 - 使用ZIP下载API
-        console.log(`尝试使用ZIP下载API: ${settings.chemical_extraction_server_url}/api/download_zip?dir_path=${encodeURIComponent(resultsPath)}`);
-
+        // 尝试备用下载方法2 - 使用ZIP下载API的POST请求
         try {
-          resultsResponse = await axios.get(
-            `${settings.chemical_extraction_server_url}/api/download_zip?dir_path=${encodeURIComponent(resultsPath)}`,
+          console.log(`尝试备用下载方法2 (ZIP POST): ${settings.chemical_extraction_server_url}/api/download_zip`);
+          resultsResponse = await axios.post(
+            `${settings.chemical_extraction_server_url}/api/download_zip`,
+            { dir_path: resultsPath },
             {
               responseType: 'arraybuffer',
-              timeout: 300000 // 5分钟超时
+              timeout: 300000, // 5分钟超时
+              headers: {
+                'Content-Type': 'application/json'
+              }
             }
           );
 
-          console.log('ZIP下载响应状态:', resultsResponse.status);
-          console.log('ZIP下载响应内容类型:', resultsResponse.headers['content-type']);
-          console.log('ZIP下载响应内容长度:', resultsResponse.data.length);
-        } catch (zipDownloadError) {
-          console.error('ZIP下载方法错误:', zipDownloadError.message);
+          console.log('备用下载方法2响应状态:', resultsResponse.status);
+          console.log('备用下载方法2响应内容类型:', resultsResponse.headers['content-type']);
+          console.log('备用下载方法2响应内容长度:', resultsResponse.data.length);
+        } catch (altDownloadError2) {
+          console.error('备用下载方法2错误:', altDownloadError2.message);
 
-          // 最后尝试使用MinerU服务器
-          console.log(`尝试使用MinerU服务器下载: ${settings.server_url}/api/download_file?file_path=${encodeURIComponent(resultsPath)}`);
-
+          // 尝试备用下载方法3 - 使用原始的GET请求但不编码
           try {
+            console.log(`尝试备用下载方法3 (不编码): ${settings.chemical_extraction_server_url}/api/download_directory?dir_path=${resultsPath}`);
             resultsResponse = await axios.get(
-              `${settings.server_url}/api/download_file?file_path=${encodeURIComponent(resultsPath)}`,
+              `${settings.chemical_extraction_server_url}/api/download_directory?dir_path=${resultsPath}`,
               {
                 responseType: 'arraybuffer',
-                headers: {
-                  'Authorization': `Basic ${Buffer.from(`${settings.username}:${settings.password}`).toString('base64')}`
-                },
                 timeout: 300000 // 5分钟超时
               }
             );
 
-            console.log('MinerU下载响应状态:', resultsResponse.status);
-            console.log('MinerU下载响应内容类型:', resultsResponse.headers['content-type']);
-            console.log('MinerU下载响应内容长度:', resultsResponse.data.length);
-          } catch (mineruDownloadError) {
-            console.error('MinerU下载方法错误:', mineruDownloadError.message);
-            throw new Error('所有下载方法都失败，无法获取处理结果');
+            console.log('备用下载方法3响应状态:', resultsResponse.status);
+            console.log('备用下载方法3响应内容类型:', resultsResponse.headers['content-type']);
+            console.log('备用下载方法3响应内容长度:', resultsResponse.data.length);
+          } catch (altDownloadError3) {
+            console.error('备用下载方法3错误:', altDownloadError3.message);
+
+            // 最后尝试使用MinerU服务器
+            console.log(`尝试使用MinerU服务器下载: ${settings.server_url}/api/download_file?file_path=${encodeURIComponent(resultsPath)}`);
+
+            try {
+              resultsResponse = await axios.get(
+                `${settings.server_url}/api/download_file?file_path=${encodeURIComponent(resultsPath)}`,
+                {
+                  responseType: 'arraybuffer',
+                  headers: {
+                    'Authorization': `Basic ${Buffer.from(`${settings.username}:${settings.password}`).toString('base64')}`
+                  },
+                  timeout: 300000 // 5分钟超时
+                }
+              );
+
+              console.log('MinerU下载响应状态:', resultsResponse.status);
+              console.log('MinerU下载响应内容类型:', resultsResponse.headers['content-type']);
+              console.log('MinerU下载响应内容长度:', resultsResponse.data.length);
+            } catch (mineruDownloadError) {
+              console.error('MinerU下载方法错误:', mineruDownloadError.message);
+              throw new Error('所有下载方法都失败，无法获取处理结果');
+            }
           }
         }
       }
