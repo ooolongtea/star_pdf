@@ -232,8 +232,108 @@ export default {
         message: "正在启动总结生成...",
       };
 
-      // 轮询进度的定时器
+      // 轮询进度的定时器和状态
       let progressTimer = null;
+      let pollCount = 0;
+      const startTime = Date.now();
+
+      // 动态轮询间隔函数
+      const getDynamicPollInterval = (pollCount, elapsedTime) => {
+        // 前30秒：每2秒轮询一次
+        if (elapsedTime < 30000) return 2000;
+        // 30秒-2分钟：每5秒轮询一次
+        if (elapsedTime < 120000) return 5000;
+        // 2分钟-5分钟：每10秒轮询一次
+        if (elapsedTime < 300000) return 10000;
+        // 5分钟以上：每15秒轮询一次
+        return 15000;
+      };
+
+      // 轮询函数
+      const pollProgress = async () => {
+        try {
+          const progressResponse = await axios.get(
+            `/api/pdf/files/${props.fileId}/summary/progress`,
+            {
+              headers: {
+                Authorization: `Bearer ${store.getters["auth/getToken"]}`,
+              },
+            }
+          );
+
+          if (progressResponse.data.success) {
+            const progressData = progressResponse.data.data;
+            summaryProgress.value = progressData;
+
+            // 如果完成或出错，停止轮询
+            if (progressData.completed || progressData.status === "error") {
+              if (progressTimer) {
+                clearTimeout(progressTimer);
+                progressTimer = null;
+              }
+              isGenerating.value = false;
+
+              if (progressData.completed && progressData.result) {
+                // 处理AI返回的内容
+                summaryContent.value = processAiContent(
+                  progressData.result.content
+                );
+                // 处理图片懒加载
+                nextTick(() => {
+                  processImagesForLazyLoading();
+                });
+                store.dispatch("setNotification", {
+                  type: "success",
+                  message: "专利总结生成成功！",
+                });
+              } else if (progressData.status === "error") {
+                error.value = progressData.error || "生成总结失败";
+              }
+              return;
+            }
+
+            // 继续轮询，使用动态间隔
+            pollCount++;
+            const elapsedTime = Date.now() - startTime;
+            const nextInterval = getDynamicPollInterval(pollCount, elapsedTime);
+
+            console.log(
+              `轮询第${pollCount}次，已用时${Math.round(
+                elapsedTime / 1000
+              )}秒，下次间隔${nextInterval / 1000}秒`
+            );
+
+            progressTimer = setTimeout(pollProgress, nextInterval);
+
+            // 检查超时（10分钟）
+            if (elapsedTime > 600000) {
+              if (progressTimer) {
+                clearTimeout(progressTimer);
+                progressTimer = null;
+              }
+              isGenerating.value = false;
+              error.value = "总结生成超时，请稍后重试";
+            }
+          }
+        } catch (progressErr) {
+          console.error("获取总结进度错误:", progressErr);
+          // 如果进度查询失败，继续轮询，但增加间隔
+          pollCount++;
+          const elapsedTime = Date.now() - startTime;
+          const nextInterval = Math.min(
+            getDynamicPollInterval(pollCount, elapsedTime) * 2,
+            30000
+          ); // 最大30秒
+
+          if (elapsedTime < 600000) {
+            // 10分钟内继续重试
+            progressTimer = setTimeout(pollProgress, nextInterval);
+          } else {
+            isGenerating.value = false;
+            error.value = "总结生成超时，请稍后重试";
+          }
+        }
+      };
 
       try {
         // 发送生成总结请求
@@ -249,58 +349,7 @@ export default {
 
         if (response.data.success) {
           // 开始轮询进度
-          progressTimer = setInterval(async () => {
-            try {
-              const progressResponse = await axios.get(
-                `/api/pdf/files/${props.fileId}/summary/progress`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${store.getters["auth/getToken"]}`,
-                  },
-                }
-              );
-
-              if (progressResponse.data.success) {
-                const progressData = progressResponse.data.data;
-                summaryProgress.value = progressData;
-
-                // 如果完成或出错，停止轮询
-                if (progressData.completed || progressData.status === "error") {
-                  clearInterval(progressTimer);
-                  isGenerating.value = false;
-
-                  if (progressData.completed && progressData.result) {
-                    // 处理AI返回的内容
-                    summaryContent.value = processAiContent(
-                      progressData.result.content
-                    );
-                    // 处理图片懒加载
-                    nextTick(() => {
-                      processImagesForLazyLoading();
-                    });
-                    store.dispatch("setNotification", {
-                      type: "success",
-                      message: "专利总结生成成功！",
-                    });
-                  } else if (progressData.status === "error") {
-                    error.value = progressData.error || "生成总结失败";
-                  }
-                }
-              }
-            } catch (progressErr) {
-              console.error("获取总结进度错误:", progressErr);
-              // 如果进度查询失败，继续轮询，但不显示错误
-            }
-          }, 2000); // 每2秒轮询一次
-
-          // 设置超时，防止无限轮询
-          setTimeout(() => {
-            if (progressTimer) {
-              clearInterval(progressTimer);
-              isGenerating.value = false;
-              error.value = "总结生成超时，请稍后重试";
-            }
-          }, 300000); // 5分钟超时
+          progressTimer = setTimeout(pollProgress, 2000); // 2秒后开始第一次轮询
         } else {
           error.value = response.data.message || "启动总结生成失败";
           isGenerating.value = false;
@@ -320,7 +369,8 @@ export default {
 
         // 清理定时器
         if (progressTimer) {
-          clearInterval(progressTimer);
+          clearTimeout(progressTimer);
+          progressTimer = null;
         }
       }
     };

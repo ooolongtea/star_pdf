@@ -2547,6 +2547,85 @@ exports.generateSummary = async (req, res) => {
   }
 };
 
+// 过滤AI总结内容，去除模板说明和要求
+function filterSummaryContent(content) {
+  if (!content) return '';
+
+  // 按行分割内容
+  const lines = content.split('\n');
+  const filteredLines = [];
+  let skipSection = false;
+  let inRequirementSection = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+
+    // 检查是否遇到分隔线，开始跳过注意事项部分
+    if (trimmedLine === '---' || trimmedLine === '--- ') {
+      skipSection = true;
+      continue;
+    }
+
+    // 如果已经在跳过状态，继续跳过
+    if (skipSection) {
+      continue;
+    }
+
+    // 检查是否是要求部分的开始
+    if (trimmedLine === '**要求：**') {
+      inRequirementSection = true;
+      continue;
+    }
+
+    // 如果在要求部分中
+    if (inRequirementSection) {
+      // 检查是否是新的章节开始（以##开头），结束要求部分
+      if (trimmedLine.startsWith('## ')) {
+        inRequirementSection = false;
+        filteredLines.push(line);
+      }
+      // 跳过要求部分的内容
+      continue;
+    }
+
+    // 跳过以"**要求："开头的行
+    if (trimmedLine.startsWith('**要求：')) {
+      continue;
+    }
+
+    // 跳过注意事项相关的行
+    if (trimmedLine === '**注意事项：**' ||
+      trimmedLine.startsWith('1. 请将') ||
+      trimmedLine.startsWith('2. 带*的字段') ||
+      trimmedLine.startsWith('3. 保持原文') ||
+      trimmedLine.startsWith('4. 对于化学') ||
+      trimmedLine.startsWith('5. 所有日期') ||
+      trimmedLine.startsWith('6. 所有编号') ||
+      trimmedLine.startsWith('7. 避免使用') ||
+      trimmedLine.startsWith('8. 保持专业')) {
+      continue;
+    }
+
+    // 保留这一行
+    filteredLines.push(line);
+  }
+
+  // 重新组合内容
+  let filteredContent = filteredLines.join('\n');
+
+  // 移除多余的空行（连续的空行合并为单个空行）
+  filteredContent = filteredContent.replace(/\n\s*\n\s*\n/g, '\n\n');
+
+  // 移除开头和结尾的空行
+  filteredContent = filteredContent.trim();
+
+  console.log('原始内容长度:', content.length);
+  console.log('过滤后内容长度:', filteredContent.length);
+
+  return filteredContent;
+}
+
 // 异步处理总结生成
 async function processSummaryGeneration(fileId, userId, markdownPath, progressDir) {
   let connection = null;
@@ -2666,6 +2745,13 @@ async function processSummaryGeneration(fileId, userId, markdownPath, progressDi
       throw new Error('生成总结失败，AI模型返回的内容为空');
     }
 
+    // 过滤AI返回的内容，去除模板说明
+    const filteredContent = filterSummaryContent(summaryContent);
+
+    if (!filteredContent) {
+      throw new Error('过滤后的总结内容为空');
+    }
+
     // 更新进度：正在保存结果
     progressInfo = {
       status: 'saving',
@@ -2687,9 +2773,9 @@ async function processSummaryGeneration(fileId, userId, markdownPath, progressDi
       fs.mkdirSync(summaryDir, { recursive: true });
     }
 
-    // 保存总结内容
+    // 保存过滤后的总结内容
     const summaryPath = path.join(summaryDir, `${path.basename(markdownPath, '.md')}_summary.md`);
-    fs.writeFileSync(summaryPath, summaryContent);
+    fs.writeFileSync(summaryPath, filteredContent);
 
     console.log('总结内容已保存到:', summaryPath);
 
@@ -2711,7 +2797,7 @@ async function processSummaryGeneration(fileId, userId, markdownPath, progressDi
       error: null,
       result: {
         summaryPath: relativeSummaryPath,
-        content: summaryContent
+        content: filteredContent
       }
     };
 
@@ -2843,10 +2929,13 @@ exports.getSummaryContent = async (req, res) => {
 
       const summaryContent = fs.readFileSync(summaryPath, 'utf8');
 
-      // 返回总结内容
+      // 过滤总结内容，去除模板说明
+      const filteredContent = filterSummaryContent(summaryContent);
+
+      // 返回过滤后的总结内容
       res.status(200).json({
         success: true,
-        data: summaryContent
+        data: filteredContent || summaryContent // 如果过滤失败，返回原内容
       });
     } finally {
       connection.release();
